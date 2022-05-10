@@ -1,0 +1,124 @@
+// Copyright (c) 2021 Horizon Robotics.All Rights Reserved.
+//
+// The material in this file is confidential and contains trade secrets
+// of Horizon Robotics Inc. This is proprietary information owned by
+// Horizon Robotics Inc. No part of this work may be disclosed,
+// reproduced, copied, transmitted, or used in any way for any purpose,
+// without the express written permission of Horizon Robotics Inc.
+
+#ifndef HAND_LMK_OUTPUT_PARSER_H
+#define HAND_LMK_OUTPUT_PARSER_H
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "dnn_node/dnn_node_data.h"
+
+using hobot::dnn_node::DNNResult;
+using hobot::dnn_node::DNNTensor;
+using hobot::dnn_node::Filter2DResult;
+using hobot::dnn_node::InputDescription;
+using hobot::dnn_node::Model;
+using hobot::dnn_node::OutputDescription;
+using hobot::dnn_node::SingleBranchOutputParser;
+
+/**
+ * \~Chinese @brief 2D坐标点
+ */
+template <typename Dtype>
+struct Point_ {
+  inline Point_() {}
+  inline Point_(Dtype x_, Dtype y_, float score_ = 0.0)
+      : x(x_), y(y_), score(score_) {}
+
+  Dtype x = 0;
+  Dtype y = 0;
+  float score = 0.0;
+};
+typedef Point_<float> Point;
+typedef std::vector<Point> Landmarks;
+
+class LandmarksResult : public DNNResult {
+ public:
+  std::vector<Landmarks> values;
+
+  void Reset() override { values.clear(); }
+};
+
+class HandLmkOutDesc : public OutputDescription {
+ public:
+  HandLmkOutDesc(Model* mode, int index, std::string type = "detection")
+      : OutputDescription(mode, index, type) {}
+
+  std::shared_ptr<std::vector<hbDNNRoi>> rois;
+  std::string ts;
+  // 由于每个roi对应一次Parse，使用present_roi_idx统计当前Parse对应的roi idx
+  size_t present_roi_idx = 0;
+};
+
+typedef enum {
+  LAYOUT_NHWC = 0,
+  LAYOUT_NCHW = 2,
+  LAYOUT_NHWC_4W8C = 134,  // 适配老模型中的layout特殊处理
+  LAYOUT_NONE = 255,
+} TensorLayout;
+
+typedef enum {
+  IMG_TYPE_Y,
+  IMG_TYPE_NV12,
+  IMG_TYPE_NV12_SEPARATE,
+  IMG_TYPE_YUV444,
+  IMG_TYPE_RGB,
+  IMG_TYPE_BGR,
+  TENSOR_TYPE_S4,
+  TENSOR_TYPE_U4,
+  TENSOR_TYPE_S8,  // 8
+  TENSOR_TYPE_U8,
+  TENSOR_TYPE_F16,
+  TENSOR_TYPE_S16,
+  TENSOR_TYPE_U16,
+  TENSOR_TYPE_F32,  // 13
+  TENSOR_TYPE_S32,
+  TENSOR_TYPE_U32,
+  TENSOR_TYPE_F64,
+  TENSOR_TYPE_S64,
+  TENSOR_TYPE_U64,
+  TENSOR_TYPE_MAX
+} DataType;
+
+// 浮点转换结果
+typedef struct {
+  TensorLayout layout;
+  int dim[4];
+  std::vector<float> value;  // batch * (nhwc), batch for resizer model
+} FloatTensor;
+
+class HandLmkOutputParser : public SingleBranchOutputParser {
+ public:
+  HandLmkOutputParser() {}
+  ~HandLmkOutputParser() {}
+
+  // 对于roi infer task，每个roi对应一次Parse
+  // 因此需要在Parse中实现output和roi的match处理，即当前的Parse对应的是那个roi
+  int32_t Parse(
+      std::shared_ptr<DNNResult>& output,
+      std::vector<std::shared_ptr<InputDescription>>& input_descriptions,
+      std::shared_ptr<OutputDescription>& output_description,
+      std::shared_ptr<DNNTensor>& output_tensor) override;
+
+ private:
+  int i_o_stride_ = 4;
+
+  void LmksPostPro(const std::vector<FloatTensor>& float_tensors,
+                   const int valid_offset,
+                   const int valid_result_idx,
+                   const hbDNNRoi& roi,
+                   std::shared_ptr<LandmarksResult>& output);
+  void OutputTensors2FloatTensors(const DNNTensor& tensor,
+                                  FloatTensor& float_tensor,
+                                  int batch);
+};
+
+#endif  // HAND_LMK_OUTPUT_PARSER_H
