@@ -228,29 +228,32 @@ int HandLmkDetNode::PostProcess(
   }
 
   if (msg) {
-    static int output_frameCount_ = 0;
-    static auto output_tp_ = std::chrono::system_clock::now();
+    int smart_fps = -1;
     {
       auto tp_now = std::chrono::system_clock::now();
+      std::unique_lock<std::mutex> lk(frame_stat_mtx_);
       output_frameCount_++;
       auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(
                           tp_now - output_tp_)
                           .count();
-      if (interval >= 1000) {
+      if (interval >= 5000) {
+        smart_fps_ = output_frameCount_ / (interval / 1000);
         RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"),
                     "Smart fps = %d",
-                    output_frameCount_);
+                    smart_fps_);
         output_frameCount_ = 0;
         output_tp_ = std::chrono::system_clock::now();
       }
+      smart_fps = smart_fps_;
     }
 
     ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg(
         new ai_msgs::msg::PerceptionTargets());
     ai_msg->set__header(msg->header);
-    ai_msg->set__fps(msg->fps);
     ai_msg->set__perfs(msg->perfs);
     ai_msg->set__disappeared_targets(msg->disappeared_targets);
+
+    ai_msg->set__fps(smart_fps);
 
     int hand_roi_idx = 0;
     const std::map<size_t, size_t>& valid_roi_idx =

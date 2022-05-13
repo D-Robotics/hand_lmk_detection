@@ -110,6 +110,7 @@ class HandLmkDetNode : public DnnNode {
 
   std::chrono::high_resolution_clock::time_point output_tp_;
   int output_frameCount_ = 0;
+  int smart_fps_ = 0;
   std::mutex frame_stat_mtx_;
 
   std::string ai_msg_pub_topic_name = "/hobot_hand_lmk_detection";

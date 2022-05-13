@@ -77,13 +77,13 @@ colcon build --packages-select hand_lmk_detection \
 
 ## 参数
 
-| 参数名                 | 类型        | 解释                                                         | 是否必须 | 支持的配置           | 默认值                       |
-| ---------------------- | ----------- | ------------------------------------------------------------ | -------- | -------------------- | ---------------------------- |
-| is_sync_mode           | int         | 同步/异步推理模式。0：异步模式；1：同步模式                  | 否       | 0/1                  | 0                            |
-| model_file_name        | std::string | 推理使用的模型文件                                           | 否       | 根据实际模型路径配置 | config/handLMKs.hbm          |
+| 参数名                 | 类型        | 解释                                                                                                                | 是否必须 | 支持的配置           | 默认值                       |
+| ---------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------- | -------- | -------------------- | ---------------------------- |
+| is_sync_mode           | int         | 同步/异步推理模式。0：异步模式；1：同步模式                                                                         | 否       | 0/1                  | 0                            |
+| model_file_name        | std::string | 推理使用的模型文件                                                                                                  | 否       | 根据实际模型路径配置 | config/handLMKs.hbm          |
 | is_shared_mem_sub      | int         | 是否使用shared mem通信方式订阅图片消息。打开和关闭shared mem通信方式订阅图片的topic名分别为/hbmem_img和/image_raw。 | 0/1      | 0/1                  | 0                            |
-| ai_msg_pub_topic_name  | std::string | 发布包含人手关键点检测结果的AI消息的topic名                  | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection    |
-| ai_msg_sub_topic_name_ | std::string | 订阅包含人手框检测结果的AI消息的topic名                      | 否       | 根据实际部署环境配置 | /hobot_mono2d_body_detection |
+| ai_msg_pub_topic_name  | std::string | 发布包含人手关键点检测结果的AI消息的topic名                                                                         | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection    |
+| ai_msg_sub_topic_name_ | std::string | 订阅包含人手框检测结果的AI消息的topic名                                                                             | 否       | 根据实际部署环境配置 | /hobot_mono2d_body_detection |
 
 ## 运行
 
@@ -100,11 +100,13 @@ cp -r install/lib/mono2d_body_detection/config/ .
 cp -r install/lib/hand_lmk_detection/config/ .
 
 # 启动图片发布pkg
-ros2 run mipi_cam mipi_cam --ros-args -p out_format:=nv12 -p image_width:=960 -p image_height:=540 -p io_method:=shared_mem --log-level error &
+ros2 run mipi_cam mipi_cam --ros-args -p out_format:=nv12 -p image_width:=960 -p image_height:=544 -p io_method:=shared_mem --log-level error &
+# 启动jpeg图片编码&发布pkg
+ros2 run hobot_codec hobot_codec_republish --ros-args -p channel:=1 -p in_mode:=shared_mem -p in_format:=nv12 -p out_mode:=ros -p out_format:=jpeg -p sub_topic:=/hbmem_img -p pub_topic:=/image_jpeg --ros-args --log-level error &
 # 启动单目rgb人体、人头、人脸、人手框和人体关键点检测pkg
 ros2 run mono2d_body_detection mono2d_body_detection --ros-args --log-level error &
 # 启动web展示pkg
-ros2 run websocket websocket --ros-args -p image_topic:=/hbmem_img -p image_type:=nv12_hbmem -p image_width:=960 -p image_height:=544 -p smart_topic:=/hobot_hand_lmk_detection -p smart_width:=960 -p smart_height:=544 --log-level error &
+ros2 run websocket websocket --ros-args -p image_topic:=/image_jpeg -p image_type:=mjpeg -p smart_topic:=/hobot_hand_lmk_detection --log-level error &
 
 # 启动人手关键点检测pkg
 ros2 run hand_lmk_detection hand_lmk_detection
@@ -122,11 +124,13 @@ cp -r install/lib/mono2d_body_detection/config/ .
 cp -r install/lib/hand_lmk_detection/config/ .
 
 # 启动图片发布pkg
-./install/lib/mipi_cam/mipi_cam --ros-args -p out_format:=nv12 -p image_width:=960 -p image_height:=540 -p io_method:=shared_mem --log-level error &
+./install/lib/mipi_cam/mipi_cam --ros-args -p out_format:=nv12 -p image_width:=960 -p image_height:=544 -p io_method:=shared_mem --log-level error &
+# 启动jpeg图片编码&发布pkg
+./install/lib/hobot_codec/hobot_codec_republish --ros-args -p channel:=1 -p in_mode:=shared_mem -p in_format:=nv12 -p out_mode:=ros -p out_format:=jpeg -p sub_topic:=/hbmem_img -p pub_topic:=/image_jpeg --ros-args --log-level error &
 # 启动单目rgb人体、人头、人脸、人手框和人体关键点检测pkg
 ./install/lib/mono2d_body_detection/mono2d_body_detection --ros-args --log-level error &
 # 启动web展示pkg
-./install/lib/websocket/websocket --ros-args -p image_topic:=/hbmem_img -p image_type:=nv12_hbmem -p image_width:=960 -p image_height:=544 -p smart_topic:=/hobot_hand_lmk_detection -p smart_width:=960 -p smart_height:=544 --log-level error &
+./install/lib/websocket/websocket --ros-args -p image_topic:=/image_jpeg -p image_type:=mjpeg -p smart_topic:=/hobot_hand_lmk_detection --log-level error &
 
 # 启动人手关键点检测pkg
 ./install/lib/hand_lmk_detection/hand_lmk_detection
@@ -146,7 +150,7 @@ cp -r install/lib/hand_lmk_detection/config/ .
 
 ```
 [INFO] [1652165932.746271088] [hand lmk ai msg sub]: Recved ai msg, frame_id: 6810, stamp: 1652165932_708693931
-[INFO] [1652165932.753882175] [hand lmk det node]: Recved img encoding: nv12, h: 540, w: 960, step: 960, index: 6810, stamp: 1652165932_708693931, data size: 777600
+[INFO] [1652165932.753882175] [hand lmk det node]: Recved img encoding: nv12, h: 544, w: 960, step: 960, index: 6810, stamp: 1652165932_708693931, data size: 777600
 [INFO] [1652165932.755425758] [hand lmk det node]: inputs.size(): 2, rois->size(): 2
 [WARN] [1652165932.771337247] [hand lmk det node]: Output from, frame_id: 6810, stamp: 1652165932_708693931, hand rois size: 2, hand rois idx size: 2, hand outputs size: 2, hand lmk size: 2
 [INFO] [1652165932.771833234] [hand lmk det node]: target id: 1, rois size: 1 points size: 1  roi type: body  point type: body_kps
