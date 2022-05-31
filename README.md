@@ -91,6 +91,7 @@ colcon build --packages-select hand_lmk_detection \
 
 ### **Ubuntu**
 
+运行方式1，使用ros2 run启动：
 ```
 export COLCON_CURRENT_PREFIX=./install
 source ./install/setup.bash
@@ -110,6 +111,19 @@ ros2 run websocket websocket --ros-args -p image_topic:=/image_jpeg -p image_typ
 
 # 启动人手关键点检测pkg
 ros2 run hand_lmk_detection hand_lmk_detection
+
+```
+运行方式2，使用launch文件启动：
+```
+export COLCON_CURRENT_PREFIX=./install
+source ./install/setup.bash
+# config中为示例使用的模型，根据实际安装路径进行拷贝
+# 如果是板端编译（无--merge-install编译选项），拷贝命令为cp -r install/PKG_NAME/lib/PKG_NAME/config/ .，其中PKG_NAME为具体的package名。
+cp -r install/lib/mono2d_body_detection/config/ .
+cp -r install/lib/hand_lmk_detection/config/ .
+
+# 启动launch文件
+ros2 launch install/share/hand_lmk_detection/launch/hobot_hand_lmk_detection.launch.py
 
 ```
 
@@ -139,7 +153,9 @@ cp -r install/lib/hand_lmk_detection/config/ .
 
 ## 注意事项
 
-第一次运行web展示需要启动webserver服务，运行方法为:
+1. 板端使用launch启动，需要安装依赖，安装命令：`pip3 install lark-parser`。设备上只需要配置一次，断电重启不需要重新配置。
+
+2. 第一次运行web展示需要启动webserver服务，运行方法为:
 
 - cd 到websocket的部署路径下：`cd install/lib/websocket/webservice/`（如果是板端编译（无--merge-install编译选项）执行命令为`cd install/websocket/lib/websocket/webservice`）
 - 启动nginx：`chmod +x ./sbin/nginx && ./sbin/nginx -p .`
