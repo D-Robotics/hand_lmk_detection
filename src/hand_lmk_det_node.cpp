@@ -8,6 +8,7 @@
 
 #include "include/hand_lmk_det_node.h"
 
+#include <math.h>
 #include <unistd.h>
 
 #include <fstream>
@@ -214,6 +215,10 @@ int HandLmkDetNode::PostProcess(
   if (lmk_val->values.empty()) {
     RCLCPP_DEBUG(rclcpp::get_logger("hand lmk det node"),
                  "Frame has no hand lmk");
+    {
+      std::unique_lock<std::mutex> lk(frame_stat_mtx_);
+      output_frameCount_++;
+    }
     msg_publisher_->publish(std::move(msg));
     return 0;
   }
@@ -223,6 +228,10 @@ int HandLmkDetNode::PostProcess(
           hand_lmk_output->valid_roi_idx.size()) {
     RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
                  "Check hand lmk outputs fail");
+    {
+      std::unique_lock<std::mutex> lk(frame_stat_mtx_);
+      output_frameCount_++;
+    }
     msg_publisher_->publish(std::move(msg));
     return 0;
   }
@@ -237,7 +246,8 @@ int HandLmkDetNode::PostProcess(
                           tp_now - output_tp_)
                           .count();
       if (interval >= 5000) {
-        smart_fps_ = output_frameCount_ / (interval / 1000);
+        smart_fps_ = round(static_cast<float>(output_frameCount_) /
+                           (static_cast<float>(interval) / 1000.0));
         RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"),
                     "Smart fps = %d",
                     smart_fps_);
@@ -389,8 +399,8 @@ void HandLmkDetNode::RosImgProcess(
           0 ||
       !ai_msg) {
     RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
-                 "Frame ts %s get hand roi fail",
-                 ts.c_str());
+                "Frame ts %s get hand roi fail",
+                ts.c_str());
     return;
   }
   if (!rois || rois->empty() || rois->size() != valid_roi_idx.size()) {
@@ -398,6 +408,10 @@ void HandLmkDetNode::RosImgProcess(
                 "Frame ts %s has no hand roi",
                 ts.c_str());
     if (msg_publisher_ && ai_msg) {
+      {
+        std::unique_lock<std::mutex> lk(frame_stat_mtx_);
+        output_frameCount_++;
+      }
       msg_publisher_->publish(std::move(ai_msg));
     }
     return;
@@ -529,7 +543,8 @@ void HandLmkDetNode::SharedMemImgProcess(
   std::map<size_t, size_t> valid_roi_idx;
   ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg = nullptr;
   if (ai_msg_sub_node_->GetTargetRois(ts, rois, valid_roi_idx, ai_msg, 200) <
-          0 || !ai_msg) {
+          0 ||
+      !ai_msg) {
     RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
                 "Frame ts %s get invalid roi",
                 ts.c_str());
@@ -541,6 +556,10 @@ void HandLmkDetNode::SharedMemImgProcess(
                 "Frame ts %s has no hand",
                 ts.c_str());
     if (msg_publisher_ && ai_msg) {
+      {
+        std::unique_lock<std::mutex> lk(frame_stat_mtx_);
+        output_frameCount_++;
+      }
       msg_publisher_->publish(std::move(ai_msg));
     }
     return;
@@ -665,7 +684,7 @@ int HandLmkDetNode::Render(
   cv::Mat nv12(height * 3 / 2, width, CV_8UC1, buf);
   cv::Mat bgr;
   cv::cvtColor(nv12, bgr, CV_YUV2BGR_NV12);
-  delete []buf;
+  delete[] buf;
   auto& mat = bgr;
 
   RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"),
@@ -733,7 +752,7 @@ int HandLmkDetNode::Feedback() {
       fb_img_info_.img_w,
       fb_img_info_.img_h,
       fb_img_info_.img_w);
-  delete []data;
+  delete[] data;
   if (!pyramid) {
     RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
                  "Get Nv12 pym fail with image: %s",
