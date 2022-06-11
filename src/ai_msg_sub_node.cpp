@@ -47,12 +47,12 @@ AiMsgSubNode::AiMsgSubNode(const std::string& node_name,
       this->create_subscription<ai_msgs::msg::PerceptionTargets>(
           ai_msg_sub_topic_name_,
           10,
-          std::bind(&AiMsgSubNode::AiImgProcess, this, std::placeholders::_1));
+          std::bind(&AiMsgSubNode::AiMsgProcess, this, std::placeholders::_1));
 }
 
 AiMsgSubNode::~AiMsgSubNode() {}
 
-void AiMsgSubNode::AiImgProcess(
+void AiMsgSubNode::AiMsgProcess(
     const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg) {
   if (!msg || !rclcpp::ok()) {
     return;
@@ -70,12 +70,14 @@ void AiMsgSubNode::AiImgProcess(
 }
 
 int AiMsgSubNode::GetTargetRois(
-    const std::string& ts,
+    const std_msgs::msg::Header::_stamp_type& msg_ts,
     std::shared_ptr<std::vector<hbDNNRoi>>& rois,
     std::map<size_t, size_t>& valid_roi_idx,
     ai_msgs::msg::PerceptionTargets::UniquePtr& ai_msg,
     int time_out_ms) {
-  ai_msg = hand_lmk_feed_cache_.Get(ts, time_out_ms);
+  std::string ts =
+      std::to_string(msg_ts.sec) + "." + std::to_string(msg_ts.nanosec);
+  ai_msg = hand_lmk_feed_cache_.Get(msg_ts, time_out_ms);
   if (!ai_msg) {
     RCLCPP_WARN(rclcpp::get_logger("hand lmk ai msg sub"),
                 "Frame find ts %s fail",

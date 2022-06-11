@@ -401,8 +401,8 @@ void HandLmkDetNode::RosImgProcess(
   std::shared_ptr<std::vector<hbDNNRoi>> rois = nullptr;
   std::map<size_t, size_t> valid_roi_idx;
   ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg = nullptr;
-  if (ai_msg_sub_node_->GetTargetRois(ts, rois, valid_roi_idx, ai_msg, 200) <
-          0 ||
+  if (ai_msg_sub_node_->GetTargetRois(
+          img_msg->header.stamp, rois, valid_roi_idx, ai_msg, 200) < 0 ||
       !ai_msg) {
     RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
                 "Frame ts %s get hand roi fail",
@@ -548,8 +548,8 @@ void HandLmkDetNode::SharedMemImgProcess(
   std::shared_ptr<std::vector<hbDNNRoi>> rois = nullptr;
   std::map<size_t, size_t> valid_roi_idx;
   ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg = nullptr;
-  if (ai_msg_sub_node_->GetTargetRois(ts, rois, valid_roi_idx, ai_msg, 200) <
-          0 ||
+  if (ai_msg_sub_node_->GetTargetRois(
+          img_msg->time_stamp, rois, valid_roi_idx, ai_msg, 200) < 0 ||
       !ai_msg) {
     RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
                 "Frame ts %s get invalid roi",
