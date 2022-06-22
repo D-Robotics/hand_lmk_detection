@@ -40,6 +40,20 @@
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/imgproc.hpp"
 
+builtin_interfaces::msg::Time ConvertToRosTime(
+    const struct timespec& time_spec) {
+  builtin_interfaces::msg::Time stamp;
+  stamp.set__sec(time_spec.tv_sec);
+  stamp.set__nanosec(time_spec.tv_nsec);
+  return stamp;
+}
+
+int CalTimeMsDuration(const builtin_interfaces::msg::Time& start,
+                      const builtin_interfaces::msg::Time& end) {
+  return (end.sec - start.sec) * 1000 + end.nanosec / 1000 / 1000 -
+         start.nanosec / 1000 / 1000;
+}
+
 HandLmkDetNode::HandLmkDetNode(const std::string& node_name,
                                std::shared_ptr<AiMsgSubNode> ai_msg_sub_node,
                                const NodeOptions& options)
@@ -135,7 +149,7 @@ int HandLmkDetNode::SetNodePara() {
   dnn_node_para_ptr_->model_file = model_file_name_;
   dnn_node_para_ptr_->model_name = model_name_;
   dnn_node_para_ptr_->model_task_type = model_task_type_;
-  dnn_node_para_ptr_->task_num = 1;
+  dnn_node_para_ptr_->task_num = 4;
   return 0;
 }
 
@@ -171,14 +185,20 @@ int HandLmkDetNode::PostProcess(
     return 0;
   }
 
+  if (node_output->rt_stat->fps_updated) {
+    RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"),
+                "input fps: %.2f, out fps: %.2f",
+                node_output->rt_stat->input_fps,
+                node_output->rt_stat->output_fps);
+  }
+
   if (!msg_publisher_) {
     RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
                  "Invalid msg_publisher_");
     return -1;
   }
 
-  if (!node_output ||
-      kps_output_index_ >= static_cast<int32_t>(node_output->outputs.size())) {
+  if (!node_output) {
     RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"), "Invalid node output");
     return -1;
   }
@@ -187,6 +207,9 @@ int HandLmkDetNode::PostProcess(
   if (!hand_lmk_output) {
     return -1;
   }
+
+  struct timespec time_now = {0, 0};
+  clock_gettime(CLOCK_REALTIME, &time_now);
 
   auto lmk_val = std::make_shared<LandmarksResult>();
   for (const auto& output : hand_lmk_output->outputs) {
@@ -215,61 +238,28 @@ int HandLmkDetNode::PostProcess(
        << ", hand outputs size: " << hand_lmk_output->outputs.size()
        << ", hand lmk size: " << lmk_val->values.size();
   }
-  RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"), "%s", ss.str().c_str());
+  RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"), "%s", ss.str().c_str());
 
   ai_msgs::msg::PerceptionTargets::UniquePtr& msg = hand_lmk_output->ai_msg;
-  if (lmk_val->values.empty()) {
-    RCLCPP_DEBUG(rclcpp::get_logger("hand lmk det node"),
-                 "Frame has no hand lmk");
-    {
-      std::unique_lock<std::mutex> lk(frame_stat_mtx_);
-      output_frameCount_++;
-    }
-    msg_publisher_->publish(std::move(msg));
-    return 0;
-  }
 
   if (lmk_val->values.size() != hand_lmk_output->valid_rois->size() ||
       hand_lmk_output->valid_rois->size() !=
           hand_lmk_output->valid_roi_idx.size()) {
     RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
                  "Check hand lmk outputs fail");
-    {
-      std::unique_lock<std::mutex> lk(frame_stat_mtx_);
-      output_frameCount_++;
-    }
     msg_publisher_->publish(std::move(msg));
     return 0;
   }
 
   if (msg) {
-    int smart_fps = -1;
-    {
-      auto tp_now = std::chrono::system_clock::now();
-      std::unique_lock<std::mutex> lk(frame_stat_mtx_);
-      output_frameCount_++;
-      auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          tp_now - output_tp_)
-                          .count();
-      if (interval >= 5000) {
-        smart_fps_ = round(static_cast<float>(output_frameCount_) /
-                           (static_cast<float>(interval) / 1000.0));
-        RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"),
-                    "Smart fps = %d",
-                    smart_fps_);
-        output_frameCount_ = 0;
-        output_tp_ = std::chrono::system_clock::now();
-      }
-      smart_fps = smart_fps_;
-    }
-
     ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg(
         new ai_msgs::msg::PerceptionTargets());
     ai_msg->set__header(msg->header);
-    ai_msg->set__perfs(msg->perfs);
     ai_msg->set__disappeared_targets(msg->disappeared_targets);
 
-    ai_msg->set__fps(smart_fps);
+    if (node_output->rt_stat) {
+      ai_msg->set__fps(round(node_output->rt_stat->output_fps));
+    }
 
     int hand_roi_idx = 0;
     const std::map<size_t, size_t>& valid_roi_idx =
@@ -348,6 +338,51 @@ int HandLmkDetNode::PostProcess(
           rclcpp::get_logger("hand lmk det node"), "%s", ss.str().c_str());
     }
 
+    ai_msg->set__perfs(msg->perfs);
+
+    hand_lmk_output->perf_preprocess.set__time_ms_duration(
+        CalTimeMsDuration(hand_lmk_output->perf_preprocess.stamp_start,
+                          hand_lmk_output->perf_preprocess.stamp_end));
+    ai_msg->perfs.push_back(hand_lmk_output->perf_preprocess);
+
+    // predict
+    if (hand_lmk_output->rt_stat) {
+      ai_msgs::msg::Perf perf;
+      perf.set__type(model_name_ + "_predict_infer");
+      perf.set__stamp_start(
+          ConvertToRosTime(hand_lmk_output->rt_stat->infer_timespec_start));
+      perf.set__stamp_end(
+          ConvertToRosTime(hand_lmk_output->rt_stat->infer_timespec_end));
+      perf.set__time_ms_duration(hand_lmk_output->rt_stat->infer_time_ms);
+      ai_msg->perfs.push_back(perf);
+
+      perf.set__type(model_name_ + "_predict_parse");
+      perf.set__stamp_start(
+          ConvertToRosTime(hand_lmk_output->rt_stat->parse_timespec_start));
+      perf.set__stamp_end(
+          ConvertToRosTime(hand_lmk_output->rt_stat->parse_timespec_end));
+      perf.set__time_ms_duration(hand_lmk_output->rt_stat->parse_time_ms);
+      ai_msg->perfs.push_back(perf);
+    }
+
+    ai_msgs::msg::Perf perf_postprocess;
+    perf_postprocess.set__type(model_name_ + "_postprocess");
+    perf_postprocess.set__stamp_start(ConvertToRosTime(time_now));
+    clock_gettime(CLOCK_REALTIME, &time_now);
+    perf_postprocess.set__stamp_end(ConvertToRosTime(time_now));
+    perf_postprocess.set__time_ms_duration(CalTimeMsDuration(
+        perf_postprocess.stamp_start, perf_postprocess.stamp_end));
+    ai_msg->perfs.emplace_back(perf_postprocess);
+
+    // 从发布图像到发布AI结果的延迟
+    ai_msgs::msg::Perf perf_pipeline;
+    perf_pipeline.set__type(model_name_ + "_pipeline");
+    perf_pipeline.set__stamp_start(ai_msg->header.stamp);
+    perf_pipeline.set__stamp_end(perf_postprocess.stamp_end);
+    perf_pipeline.set__time_ms_duration(
+        CalTimeMsDuration(perf_pipeline.stamp_start, perf_pipeline.stamp_end));
+    ai_msg->perfs.push_back(perf_pipeline);
+
     msg_publisher_->publish(std::move(ai_msg));
   } else {
     RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
@@ -413,12 +448,8 @@ void HandLmkDetNode::RosImgProcess(
     RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
                 "Frame ts %s has no hand roi",
                 ts.c_str());
-    if (msg_publisher_ && ai_msg) {
-      {
-        std::unique_lock<std::mutex> lk(frame_stat_mtx_);
-        output_frameCount_++;
-      }
-      msg_publisher_->publish(std::move(ai_msg));
+    if (!rois) {
+      rois = std::make_shared<std::vector<hbDNNRoi>>();
     }
     return;
   }
@@ -527,6 +558,9 @@ void HandLmkDetNode::SharedMemImgProcess(
     return;
   }
 
+  struct timespec time_start = {0, 0};
+  clock_gettime(CLOCK_REALTIME, &time_start);
+
   // dump recved img msg
   // std::ofstream ofs("img_" + std::to_string(img_msg->index) + "." +
   // std::string(reinterpret_cast<const char*>(img_msg->encoding.data())));
@@ -561,14 +595,9 @@ void HandLmkDetNode::SharedMemImgProcess(
     RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
                 "Frame ts %s has no hand",
                 ts.c_str());
-    if (msg_publisher_ && ai_msg) {
-      {
-        std::unique_lock<std::mutex> lk(frame_stat_mtx_);
-        output_frameCount_++;
-      }
-      msg_publisher_->publish(std::move(ai_msg));
+    if (!rois) {
+      rois = std::make_shared<std::vector<hbDNNRoi>>();
     }
-    return;
   }
 
   auto tp_start = std::chrono::system_clock::now();
@@ -612,6 +641,9 @@ void HandLmkDetNode::SharedMemImgProcess(
   dnn_output->valid_rois = rois;
   dnn_output->valid_roi_idx = valid_roi_idx;
   dnn_output->ai_msg = std::move(ai_msg);
+  dnn_output->perf_preprocess.stamp_start.sec = time_start.tv_sec;
+  dnn_output->perf_preprocess.stamp_start.nanosec = time_start.tv_nsec;
+  dnn_output->perf_preprocess.set__type(model_name_ + "_preprocess");
 
   auto model_manage = GetModel();
   if (!model_manage) {
@@ -632,6 +664,11 @@ void HandLmkDetNode::SharedMemImgProcess(
       inputs.push_back(pyramid);
     }
   }
+
+  struct timespec time_now = {0, 0};
+  clock_gettime(CLOCK_REALTIME, &time_now);
+  dnn_output->perf_preprocess.stamp_end.sec = time_now.tv_sec;
+  dnn_output->perf_preprocess.stamp_end.nanosec = time_now.tv_nsec;
 
   uint32_t ret = 0;
   // 3. 开始预测

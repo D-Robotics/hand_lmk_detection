@@ -80,7 +80,7 @@ int AiMsgSubNode::GetTargetRois(
   ai_msg = hand_lmk_feed_cache_.Get(msg_ts, time_out_ms);
   if (!ai_msg) {
     RCLCPP_WARN(rclcpp::get_logger("hand lmk ai msg sub"),
-                "Frame find ts %s fail",
+                "Frame find ai ts %s fail",
                 ts.c_str());
     return -1;
   }
@@ -90,7 +90,7 @@ int AiMsgSubNode::GetTargetRois(
   }
 
   RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
-               "Frame ts: %s targets size: %d",
+               "Frame ai ts: %s targets size: %d",
                ts.c_str(),
                ai_msg->targets.size());
   size_t hand_roi_idx = 0;

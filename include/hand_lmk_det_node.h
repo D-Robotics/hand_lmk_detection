@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
-#include <map>
 
 #include "rclcpp/rclcpp.hpp"
 #ifdef CV_BRIDGE_PKG_ENABLED
@@ -53,8 +53,8 @@ using hobot::dnn_node::ModelManager;
 using hobot::dnn_node::ModelRoiInferTask;
 
 using hobot::dnn_node::DNNTensor;
-using hobot::dnn_node::OutputParser;
 using hobot::dnn_node::OutputDescription;
+using hobot::dnn_node::OutputParser;
 
 using ai_msgs::msg::PerceptionTargets;
 
@@ -68,6 +68,7 @@ struct HandLmkOutput : public DnnNodeOutput {
   // 原始roi的索引对应于valid_rois的索引
   std::map<size_t, size_t> valid_roi_idx;
   ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg;
+  ai_msgs::msg::Perf perf_preprocess;
 };
 
 struct FeedbackImgInfo {
@@ -107,17 +108,12 @@ class HandLmkDetNode : public DnnNode {
   int32_t model_output_count_ = 1;
   const int32_t kps_output_index_ = 0;
 
-  int is_sync_mode_ = 1;
+  int is_sync_mode_ = 0;
 
   // 使用shared mem通信方式订阅图片
   int is_shared_mem_sub_ = 1;
 
   int dump_render_img_ = 0;
-
-  std::chrono::high_resolution_clock::time_point output_tp_;
-  int output_frameCount_ = 0;
-  int smart_fps_ = 0;
-  std::mutex frame_stat_mtx_;
 
   std::string ai_msg_pub_topic_name = "/hobot_hand_lmk_detection";
   rclcpp::Publisher<ai_msgs::msg::PerceptionTargets>::SharedPtr msg_publisher_ =

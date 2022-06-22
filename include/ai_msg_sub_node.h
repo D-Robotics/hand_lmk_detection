@@ -97,6 +97,7 @@ class HandLmkFeedCache {
                  recved_aimsg_ts_.top().nanosec,
                  recved_aimsg_cache_.size(),
                  recved_aimsg_ts_.size());
+    cache_cv_.notify_one();
     return 0;
   }
 
