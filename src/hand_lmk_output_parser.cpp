@@ -20,7 +20,7 @@
 #include "rclcpp/rclcpp.hpp"
 
 int32_t HandLmkOutputParser::Parse(
-    std::shared_ptr<DNNResult> &output,
+    std::shared_ptr<LandmarksResult> &output,
     std::vector<std::shared_ptr<InputDescription>> &input_descriptions,
     std::shared_ptr<OutputDescription> &output_description,
     std::shared_ptr<DNNTensor> &output_tensor) {

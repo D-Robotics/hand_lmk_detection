@@ -101,7 +101,7 @@ typedef struct {
   std::vector<float> value;  // batch * (nhwc), batch for resizer model
 } FloatTensor;
 
-class HandLmkOutputParser : public SingleBranchOutputParser {
+class HandLmkOutputParser : public SingleBranchOutputParser<LandmarksResult> {
  public:
   HandLmkOutputParser() {}
   ~HandLmkOutputParser() {}
@@ -109,7 +109,7 @@ class HandLmkOutputParser : public SingleBranchOutputParser {
   // 对于roi infer task，每个roi对应一次Parse
   // 因此需要在Parse中实现output和roi的match处理，即当前的Parse对应的是那个roi
   int32_t Parse(
-      std::shared_ptr<DNNResult>& output,
+      std::shared_ptr<LandmarksResult>& output,
       std::vector<std::shared_ptr<InputDescription>>& input_descriptions,
       std::shared_ptr<OutputDescription>& output_description,
       std::shared_ptr<DNNTensor>& output_tensor) override;
