@@ -101,7 +101,7 @@ def generate_launch_description():
         parameters=[
             {"ai_msg_pub_topic_name": "/hobot_mono2d_body_detection"}
         ],
-        arguments=['--ros-args', '--log-level', 'warn']
+        arguments=['--ros-args', '--log-level', 'error']
     )
 
     # 人手关键点检测

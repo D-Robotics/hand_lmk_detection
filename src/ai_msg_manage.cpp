@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "include/ai_msg_sub_node.h"
+#include "include/ai_msg_manage.h"
 
 #include <unistd.h>
 
@@ -26,33 +26,11 @@
 
 #include "rclcpp/rclcpp.hpp"
 
-AiMsgSubNode::AiMsgSubNode(const std::string& node_name,
-                           const NodeOptions& options)
-    : rclcpp::Node(node_name, options) {
-  this->declare_parameter<std::string>("ai_msg_sub_topic_name",
-                                       ai_msg_sub_topic_name_);
-  this->get_parameter<std::string>("ai_msg_sub_topic_name",
-                                   ai_msg_sub_topic_name_);
+AiMsgManage::AiMsgManage() {}
 
-  std::stringstream ss;
-  ss << "Parameter:"
-     << "\n ai_msg_sub_topic_name_: " << ai_msg_sub_topic_name_;
-  RCLCPP_WARN(
-      rclcpp::get_logger("hand lmk ai msg sub"), "%s", ss.str().c_str());
+AiMsgManage::~AiMsgManage() {}
 
-  RCLCPP_WARN(rclcpp::get_logger("hand lmk ai msg sub"),
-              "Create subscription with topic_name: %s",
-              ai_msg_sub_topic_name_.c_str());
-  ai_msg_subscription_ =
-      this->create_subscription<ai_msgs::msg::PerceptionTargets>(
-          ai_msg_sub_topic_name_,
-          10,
-          std::bind(&AiMsgSubNode::AiMsgProcess, this, std::placeholders::_1));
-}
-
-AiMsgSubNode::~AiMsgSubNode() {}
-
-void AiMsgSubNode::AiMsgProcess(
+void AiMsgManage::Feed(
     const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg) {
   if (!msg || !rclcpp::ok()) {
     return;
@@ -64,12 +42,12 @@ void AiMsgSubNode::AiMsgProcess(
      << ", stamp: " << msg->header.stamp.sec << "_"
      << msg->header.stamp.nanosec;
   RCLCPP_INFO(
-      rclcpp::get_logger("hand lmk ai msg sub"), "%s", ss.str().c_str());
+      rclcpp::get_logger("hand_lmk_msg_manage"), "%s", ss.str().c_str());
 
   hand_lmk_feed_cache_.Feed(msg);
 }
 
-int AiMsgSubNode::GetTargetRois(
+int AiMsgManage::GetTargetRois(
     const std_msgs::msg::Header::_stamp_type& msg_ts,
     std::shared_ptr<std::vector<hbDNNRoi>>& rois,
     std::map<size_t, size_t>& valid_roi_idx,
@@ -79,7 +57,7 @@ int AiMsgSubNode::GetTargetRois(
       std::to_string(msg_ts.sec) + "." + std::to_string(msg_ts.nanosec);
   ai_msg = hand_lmk_feed_cache_.Get(msg_ts, time_out_ms);
   if (!ai_msg) {
-    RCLCPP_WARN(rclcpp::get_logger("hand lmk ai msg sub"),
+    RCLCPP_WARN(rclcpp::get_logger("hand_lmk_msg_manage"),
                 "Frame find ai ts %s fail",
                 ts.c_str());
     return -1;
@@ -89,21 +67,21 @@ int AiMsgSubNode::GetTargetRois(
     return 0;
   }
 
-  RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
+  RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_msg_manage"),
                "Frame ai ts: %s targets size: %d",
                ts.c_str(),
                ai_msg->targets.size());
   size_t hand_roi_idx = 0;
   for (const auto target : ai_msg->targets) {
-    RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
+    RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_msg_manage"),
                  "target.rois.size: %d",
                  target.rois.size());
     for (const auto& roi : target.rois) {
-      RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
+      RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_msg_manage"),
                    "roi.type: %s",
                    roi.type.c_str());
       if ("hand" == roi.type) {
-        RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
+        RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_msg_manage"),
                      "recv roi x_offset: %d y_offset: %d width: %d height: %d",
                      roi.rect.x_offset,
                      roi.rect.y_offset,
@@ -121,7 +99,7 @@ int AiMsgSubNode::GetTargetRois(
         right -= (right % 2 == 1 ? 0 : 1);
         bottom -= (bottom % 2 == 1 ? 0 : 1);
 
-        RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
+        RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_msg_manage"),
                      "roi: %d %d %d %d",
                      left,
                      top,
@@ -139,18 +117,18 @@ int AiMsgSubNode::GetTargetRois(
           }
 
           rois->push_back({left, top, right, bottom});
-          RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
+          RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_msg_manage"),
                        "rois size: %d",
                        rois->size());
           // 原始roi的索引对应于valid_rois的索引
           valid_roi_idx[hand_roi_idx] = rois->size() - 1;
 
-          RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
+          RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_msg_manage"),
                        "Valid hand roi map: %d %d",
                        hand_roi_idx,
                        valid_roi_idx[hand_roi_idx]);
 
-          RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
+          RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_msg_manage"),
                        "Valid hand roi: %d %d %d %d, roi_w: %d, roi_h: %d, "
                        "max_size: %d, min_size: %d",
                        left,
@@ -163,7 +141,7 @@ int AiMsgSubNode::GetTargetRois(
                        min_size);
         } else {
           RCLCPP_WARN(
-              rclcpp::get_logger("hand lmk ai msg sub"),
+              rclcpp::get_logger("hand_lmk_msg_manage"),
               "Filter hand roi: %d %d %d %d, max_size: %d, min_size: %d",
               left,
               top,
