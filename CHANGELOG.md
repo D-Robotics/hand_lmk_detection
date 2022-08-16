@@ -1,9 +1,9 @@
 # Changelog for package hand_lmk_detection
 
-hhp_1.0.5 (2022-08-11)
+hhp_1.0.5 (2022-08-16)
 ------------------
 1. launch启动脚本中支持选择使用MIPI/USB类型摄像头。
-
+2. 使用同一个Node订阅图像和AI消息，解决rqt_graph工具展示的Node graph不连续的问题。
 
 hhp_1.0.4 (2022-07-26)
 ------------------
