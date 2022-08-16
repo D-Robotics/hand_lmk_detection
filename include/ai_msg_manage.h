@@ -20,16 +20,13 @@
 #include <utility>
 #include <vector>
 
-#include "ai_msgs/msg/capture_targets.hpp"
 #include "ai_msgs/msg/perception_targets.hpp"
 #include "dnn_node/dnn_node_data.h"
-#include "rclcpp/rclcpp.hpp"
 
-#ifndef AI_MSG_SUB_NODE_H_
-#define AI_MSG_SUB_NODE_H_
+#ifndef AI_MSG_MANAGE_H_
+#define AI_MSG_MANAGE_H_
 
 using ai_msgs::msg::PerceptionTargets;
-using rclcpp::NodeOptions;
 
 using feed_predict_type =
     std::shared_ptr<std::pair<ai_msgs::msg::PerceptionTargets::ConstSharedPtr,
@@ -60,7 +57,7 @@ class HandLmkFeedCache {
     std::string ts = std::to_string(msg->header.stamp.sec) + "." +
                      std::to_string(msg->header.stamp.nanosec);
     RCLCPP_DEBUG(
-        rclcpp::get_logger("hand lmk ai msg sub"), "Feed ts %s", ts.c_str());
+        rclcpp::get_logger("hand lmk ai msg manage"), "Feed ts %s", ts.c_str());
 
     std::unique_lock<std::mutex> lg(cache_mtx_);
     // 判断是否超过最大长度
@@ -68,7 +65,7 @@ class HandLmkFeedCache {
       // 删掉最小时间戳
       std::string top_ts = std::to_string(recved_aimsg_ts_.top().sec) + "." +
                            std::to_string(recved_aimsg_ts_.top().nanosec);
-      RCLCPP_WARN(rclcpp::get_logger("hand lmk ai msg sub"),
+      RCLCPP_WARN(rclcpp::get_logger("hand lmk ai msg manage"),
                   "Ai msg cache len: %d exceeds limit: %d, erase ai ts: %s",
                   recved_aimsg_cache_.size(),
                   cache_limt_len_,
@@ -80,7 +77,7 @@ class HandLmkFeedCache {
     if (recved_aimsg_ts_.size() > cache_limt_len_) {
       std::string top_ts = std::to_string(recved_aimsg_ts_.top().sec) + "." +
                            std::to_string(recved_aimsg_ts_.top().nanosec);
-      RCLCPP_WARN(rclcpp::get_logger("hand lmk ai msg sub"),
+      RCLCPP_WARN(rclcpp::get_logger("hand lmk ai msg manage"),
                   "Ts cache len: %d exceeds limit: %d, erase ts: %s",
                   recved_aimsg_ts_.size(),
                   cache_limt_len_,
@@ -91,7 +88,7 @@ class HandLmkFeedCache {
 
     recved_aimsg_cache_[ts] = std::move(ai_msg);
     recved_aimsg_ts_.push(msg->header.stamp);
-    RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
+    RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg manage"),
                  "top ts: %llu %llu, cache size: %d, ts size: %d",
                  recved_aimsg_ts_.top().sec,
                  recved_aimsg_ts_.top().nanosec,
@@ -107,7 +104,7 @@ class HandLmkFeedCache {
     std::string ts =
         std::to_string(msg_ts.sec) + "." + std::to_string(msg_ts.nanosec);
     RCLCPP_DEBUG(
-        rclcpp::get_logger("hand lmk ai msg sub"), "Get ts %s", ts.c_str());
+        rclcpp::get_logger("hand lmk ai msg manage"), "Get ts %s", ts.c_str());
 
     ai_msgs::msg::PerceptionTargets::UniquePtr feed_predict = nullptr;
     std::unique_lock<std::mutex> lg(cache_mtx_);
@@ -118,7 +115,7 @@ class HandLmkFeedCache {
       feed_predict = std::move(recved_aimsg_cache_.at(ts));
       recved_aimsg_cache_.erase(ts);
 
-      RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
+      RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg manage"),
                    "find ts %s success, recved_aimsg_ts_ top ts: %llu %llu, "
                    "cache size: %d, ts size: %d",
                    ts.c_str(),
@@ -140,7 +137,7 @@ class HandLmkFeedCache {
           recved_aimsg_cache_.erase(top_ts);
           recved_aimsg_ts_.pop();
 
-          RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg sub"),
+          RCLCPP_DEBUG(rclcpp::get_logger("hand lmk ai msg manage"),
                        "Erase top ts: %s, cache len: %d ts len: %d",
                        top_ts.data(),
                        recved_aimsg_cache_.size(),
@@ -169,12 +166,15 @@ class HandLmkFeedCache {
       recved_aimsg_cache_;
 };
 
-class AiMsgSubNode : public rclcpp::Node {
+// 用于订阅到的AI msg管理
+// 当用户订阅到AI msg时，调用Feed接口根据时间戳缓存每帧AI msg
+// 当用户订阅到图像数据时，调用GetTargetRois接口获取对应时间戳帧中的roi，同时返回每个roi的有效信息
+class AiMsgManage {
  public:
-  AiMsgSubNode(const std::string& node_name,
-               const NodeOptions& options = NodeOptions());
-  ~AiMsgSubNode() override;
+  AiMsgManage();
+  ~AiMsgManage();
 
+  void Feed(const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg);
   int GetTargetRois(const std_msgs::msg::Header::_stamp_type& msg_ts,
                     std::shared_ptr<std::vector<hbDNNRoi>>& rois,
                     std::map<size_t, size_t>& valid_roi_idx,
@@ -187,11 +187,6 @@ class AiMsgSubNode : public rclcpp::Node {
   // roi, width & hight must be in range [16, 256)
   int32_t roi_size_max_ = 255;
   int32_t roi_size_min_ = 16;
-
-  std::string ai_msg_sub_topic_name_ = "/hobot_mono2d_body_detection";
-  rclcpp::Subscription<ai_msgs::msg::PerceptionTargets>::SharedPtr
-      ai_msg_subscription_ = nullptr;
-  void AiMsgProcess(const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg);
 };
 
-#endif  // AI_MSG_SUB_NODE_H_
+#endif  // AI_MSG_MANAGE_H_

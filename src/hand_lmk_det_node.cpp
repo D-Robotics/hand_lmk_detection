@@ -28,7 +28,7 @@
 #include "ai_msgs/msg/perception_targets.hpp"
 #include "dnn_node/dnn_node.h"
 #include "dnn_node/util/image_proc.h"
-#include "include/ai_msg_sub_node.h"
+#include "include/ai_msg_manage.h"
 #include "include/hand_lmk_output_parser.h"
 #include "rclcpp/rclcpp.hpp"
 
@@ -55,9 +55,8 @@ int CalTimeMsDuration(const builtin_interfaces::msg::Time& start,
 }
 
 HandLmkDetNode::HandLmkDetNode(const std::string& node_name,
-                               std::shared_ptr<AiMsgSubNode> ai_msg_sub_node,
                                const NodeOptions& options)
-    : DnnNode(node_name, options), ai_msg_sub_node_(ai_msg_sub_node) {
+    : DnnNode(node_name, options) {
   this->declare_parameter<int>("feed_type", feed_type_);
   this->declare_parameter<int>("is_sync_mode", is_sync_mode_);
   this->declare_parameter<std::string>("model_file_name", model_file_name_);
@@ -65,6 +64,8 @@ HandLmkDetNode::HandLmkDetNode(const std::string& node_name,
   this->declare_parameter<std::string>("ai_msg_pub_topic_name",
                                        ai_msg_pub_topic_name);
   this->declare_parameter<int>("dump_render_img", dump_render_img_);
+  this->declare_parameter<std::string>("ai_msg_sub_topic_name",
+                                       ai_msg_sub_topic_name_);
 
   this->get_parameter<int>("feed_type", feed_type_);
   this->get_parameter<int>("is_sync_mode", is_sync_mode_);
@@ -73,7 +74,8 @@ HandLmkDetNode::HandLmkDetNode(const std::string& node_name,
   this->get_parameter<std::string>("ai_msg_pub_topic_name",
                                    ai_msg_pub_topic_name);
   this->get_parameter<int>("dump_render_img", dump_render_img_);
-
+  this->get_parameter<std::string>("ai_msg_sub_topic_name",
+                                   ai_msg_sub_topic_name_);
   std::stringstream ss;
   ss << "Parameter:"
      << "\n feed_type(0:sub, 1:local): " << feed_type_
@@ -81,19 +83,20 @@ HandLmkDetNode::HandLmkDetNode(const std::string& node_name,
      << "\n model_file_name_: " << model_file_name_
      << "\n ai_msg_pub_topic_name: " << ai_msg_pub_topic_name
      << "\n is_shared_mem_sub: " << is_shared_mem_sub_
-     << "\n dump_render_img: " << dump_render_img_;
+     << "\n dump_render_img: " << dump_render_img_
+     << "\n ai_msg_sub_topic_name_: " << ai_msg_sub_topic_name_;
 
-  RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"), "%s", ss.str().c_str());
+  RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"), "%s", ss.str().c_str());
 
   if (Init() != 0) {
-    RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"), "Init failed!");
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Init failed!");
   }
 
   if (GetModelInputSize(0, model_input_width_, model_input_height_) < 0) {
-    RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"),
                  "Get model input size fail!");
   } else {
-    RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
+    RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"),
                 "The model input width is %d and height is %d",
                 model_input_width_,
                 model_input_height_);
@@ -103,15 +106,30 @@ HandLmkDetNode::HandLmkDetNode(const std::string& node_name,
     Feedback();
     rclcpp::shutdown();
   } else {
-    RCLCPP_INFO(rclcpp::get_logger("msg pub"),
+    predict_task_ = std::make_shared<std::thread>(
+        std::bind(&HandLmkDetNode::RunPredict, this));
+
+    ai_msg_manage_ = std::make_shared<AiMsgManage>();
+
+    RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"),
                 "ai_msg_pub_topic_name: %s",
                 ai_msg_pub_topic_name.data());
     msg_publisher_ = this->create_publisher<ai_msgs::msg::PerceptionTargets>(
         ai_msg_pub_topic_name, 10);
 
+    RCLCPP_INFO(rclcpp::get_logger("hand lmk ai msg sub"),
+                "Create subscription with topic_name: %s",
+                ai_msg_sub_topic_name_.c_str());
+    ai_msg_subscription_ =
+        this->create_subscription<ai_msgs::msg::PerceptionTargets>(
+            ai_msg_sub_topic_name_,
+            10,
+            std::bind(
+                &HandLmkDetNode::AiMsgProcess, this, std::placeholders::_1));
+
     if (is_shared_mem_sub_) {
 #ifdef SHARED_MEM_ENABLED
-      RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"),
+      RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"),
                   "Create hbmem_subscription with topic_name: %s",
                   sharedmem_img_topic_name_.c_str());
       sharedmem_img_subscription_ =
@@ -122,11 +140,10 @@ HandLmkDetNode::HandLmkDetNode(const std::string& node_name,
                         this,
                         std::placeholders::_1));
 #else
-      RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
-                   "Unsupport shared mem");
+      RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Unsupport shared mem");
 #endif
     } else {
-      RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"),
+      RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"),
                   "Create subscription with topic_name: %s",
                   ros_img_topic_name_.c_str());
       ros_img_subscription_ =
@@ -139,10 +156,19 @@ HandLmkDetNode::HandLmkDetNode(const std::string& node_name,
   }
 }
 
-HandLmkDetNode::~HandLmkDetNode() {}
+HandLmkDetNode::~HandLmkDetNode() {
+  std::unique_lock<std::mutex> lg(mtx_img_);
+  cv_img_.notify_all();
+  lg.unlock();
+
+  if (predict_task_ && predict_task_->joinable()) {
+    predict_task_->join();
+    predict_task_.reset();
+  }
+}
 
 int HandLmkDetNode::SetNodePara() {
-  RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"), "Set node para.");
+  RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"), "Set node para.");
   if (!dnn_node_para_ptr_) {
     return -1;
   }
@@ -154,17 +180,17 @@ int HandLmkDetNode::SetNodePara() {
 }
 
 int HandLmkDetNode::SetOutputParser() {
-  RCLCPP_INFO(rclcpp::get_logger("mono2d_body_det"), "Set output parser.");
+  RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"), "Set output parser.");
   // set output parser
   auto model_manage = GetModel();
   if (!model_manage || !dnn_node_para_ptr_) {
-    RCLCPP_ERROR(rclcpp::get_logger("mono2d_body_det"), "Invalid model");
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Invalid model");
     return -1;
   }
 
   if (kps_output_index_ >= model_manage->GetOutputCount()) {
     RCLCPP_ERROR(
-        rclcpp::get_logger("mono2d_body_det"),
+        rclcpp::get_logger("hand_lmk_det"),
         "Error! Model %s output count is %d, unmatch with kps output index %d",
         dnn_node_para_ptr_->model_name.c_str(),
         model_manage->GetOutputCount(),
@@ -186,20 +212,19 @@ int HandLmkDetNode::PostProcess(
   }
 
   if (node_output->rt_stat->fps_updated) {
-    RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"),
+    RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"),
                 "input fps: %.2f, out fps: %.2f",
                 node_output->rt_stat->input_fps,
                 node_output->rt_stat->output_fps);
   }
 
   if (!msg_publisher_) {
-    RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
-                 "Invalid msg_publisher_");
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Invalid msg_publisher_");
     return -1;
   }
 
   if (!node_output) {
-    RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"), "Invalid node output");
+    RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"), "Invalid node output");
     return -1;
   }
 
@@ -238,14 +263,14 @@ int HandLmkDetNode::PostProcess(
        << ", hand outputs size: " << hand_lmk_output->outputs.size()
        << ", hand lmk size: " << lmk_val->values.size();
   }
-  RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"), "%s", ss.str().c_str());
+  RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"), "%s", ss.str().c_str());
 
   ai_msgs::msg::PerceptionTargets::UniquePtr& msg = hand_lmk_output->ai_msg;
 
   if (lmk_val->values.size() != hand_lmk_output->valid_rois->size() ||
       hand_lmk_output->valid_rois->size() !=
           hand_lmk_output->valid_roi_idx.size()) {
-    RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"),
                  "Check hand lmk outputs fail");
     msg_publisher_->publish(std::move(msg));
     return 0;
@@ -279,11 +304,12 @@ int HandLmkDetNode::PostProcess(
       target.set__track_id(in_target.track_id);
 
       for (const auto& roi : in_target.rois) {
-        RCLCPP_DEBUG(
-            rclcpp::get_logger("example"), "roi.type: %s", roi.type.c_str());
+        RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_det"),
+                     "roi.type: %s",
+                     roi.type.c_str());
         if ("hand" == roi.type) {
           if (valid_roi_idx.find(hand_roi_idx) == valid_roi_idx.end()) {
-            RCLCPP_WARN(rclcpp::get_logger("example"),
+            RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"),
                         "This hand is filtered! hand_roi_idx %d is unmatch "
                         "with roi idx",
                         hand_roi_idx);
@@ -292,13 +318,14 @@ int HandLmkDetNode::PostProcess(
             for (auto idx : valid_roi_idx) {
               ss << idx.first << " " << idx.second << "\n";
             }
-            RCLCPP_DEBUG(rclcpp::get_logger("example"), "%s", ss.str().c_str());
+            RCLCPP_DEBUG(
+                rclcpp::get_logger("hand_lmk_det"), "%s", ss.str().c_str());
             continue;
           }
 
           auto hand_valid_roi_idx = valid_roi_idx.at(hand_roi_idx);
           if (hand_valid_roi_idx >= lmk_val->values.size()) {
-            RCLCPP_ERROR(rclcpp::get_logger("example"),
+            RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"),
                          "hand lmk outputs %d unmatch with roi idx %d",
                          lmk_val->values.size(),
                          hand_valid_roi_idx);
@@ -334,8 +361,7 @@ int HandLmkDetNode::PostProcess(
       if (!target.points.empty()) {
         ss << " point type: " << target.points.front().type << " ";
       }
-      RCLCPP_INFO(
-          rclcpp::get_logger("hand lmk det node"), "%s", ss.str().c_str());
+      RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"), "%s", ss.str().c_str());
     }
 
     ai_msg->set__perfs(msg->perfs);
@@ -385,7 +411,7 @@ int HandLmkDetNode::PostProcess(
 
     msg_publisher_->publish(std::move(ai_msg));
   } else {
-    RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"),
                  "Invalid ai msg, pub msg fail!");
     return -1;
   }
@@ -398,11 +424,11 @@ int HandLmkDetNode::Predict(
     std::vector<std::shared_ptr<OutputDescription>>& output_descs,
     const std::shared_ptr<std::vector<hbDNNRoi>> rois,
     std::shared_ptr<DnnNodeOutput> dnn_output) {
-  RCLCPP_DEBUG(rclcpp::get_logger("hand lmk det node"),
+  RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_det"),
                "task_num: %d",
                dnn_node_para_ptr_->task_num);
 
-  RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
+  RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"),
               "inputs.size(): %d, rois->size(): %d",
               inputs.size(),
               rois->size());
@@ -420,6 +446,9 @@ void HandLmkDetNode::RosImgProcess(
     return;
   }
 
+  struct timespec time_start = {0, 0};
+  clock_gettime(CLOCK_REALTIME, &time_start);
+
   std::stringstream ss;
   ss << "Recved img encoding: " << img_msg->encoding
      << ", h: " << img_msg->height << ", w: " << img_msg->width
@@ -428,35 +457,11 @@ void HandLmkDetNode::RosImgProcess(
      << ", stamp: " << img_msg->header.stamp.sec << "_"
      << img_msg->header.stamp.nanosec
      << ", data size: " << img_msg->data.size();
-  RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"), "%s", ss.str().c_str());
-
-  std::string ts = std::to_string(img_msg->header.stamp.sec) + "." +
-                   std::to_string(img_msg->header.stamp.nanosec);
-
-  std::shared_ptr<std::vector<hbDNNRoi>> rois = nullptr;
-  std::map<size_t, size_t> valid_roi_idx;
-  ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg = nullptr;
-  if (ai_msg_sub_node_->GetTargetRois(
-          img_msg->header.stamp, rois, valid_roi_idx, ai_msg, 200) < 0 ||
-      !ai_msg) {
-    RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
-                "Frame ts %s get hand roi fail",
-                ts.c_str());
-    return;
-  }
-  if (!rois || rois->empty() || rois->size() != valid_roi_idx.size()) {
-    RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
-                "Frame ts %s has no hand roi",
-                ts.c_str());
-    if (!rois) {
-      rois = std::make_shared<std::vector<hbDNNRoi>>();
-    }
-    return;
-  }
+  RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"), "%s", ss.str().c_str());
 
   // 1. 将图片处理成模型输入数据类型DNNInput
   // 使用图片生成pym，NV12PyramidInput为DNNInput的子类
-  std::shared_ptr<hobot::easy_dnn::NV12PyramidInput> pyramid = nullptr;
+  std::shared_ptr<NV12PyramidInput> pyramid = nullptr;
   if ("rgb8" == img_msg->encoding) {
 #ifdef CV_BRIDGE_PKG_ENABLED
     auto cv_img =
@@ -464,8 +469,7 @@ void HandLmkDetNode::RosImgProcess(
     pyramid = ImageUtils::GetNV12Pyramid(
         cv_img->image, img_msg->height, img_msg->width);
 #else
-    RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
-                 "Unsupport cv bridge");
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Unsupport cv bridge");
 #endif
   } else if ("nv12" == img_msg->encoding) {
     // std::string fname = "img_" + std::to_string(img_msg->header.stamp.sec)
@@ -481,74 +485,43 @@ void HandLmkDetNode::RosImgProcess(
         img_msg->height,
         img_msg->width);
   }
-
   if (!pyramid) {
-    RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"), "Get Nv12 pym fail");
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Get Nv12 pym fail");
     return;
   }
 
+  // 2. 创建推理输出数据
   auto dnn_output = std::make_shared<HandLmkOutput>();
+  // 将图片消息的header填充到输出数据中，用于表示推理输出对应的输入信息
   dnn_output->image_msg_header = std::make_shared<std_msgs::msg::Header>();
   dnn_output->image_msg_header->set__frame_id(img_msg->header.frame_id);
   dnn_output->image_msg_header->set__stamp(img_msg->header.stamp);
-  dnn_output->valid_rois = rois;
-  dnn_output->valid_roi_idx = valid_roi_idx;
-  dnn_output->ai_msg = std::move(ai_msg);
+  // 将当前的时间戳填充到输出数据中，用于计算perf
+  dnn_output->perf_preprocess.stamp_start.sec = time_start.tv_sec;
+  dnn_output->perf_preprocess.stamp_start.nanosec = time_start.tv_nsec;
+  dnn_output->perf_preprocess.set__type(model_name_ + "_preprocess");
 
-  auto model_manage = GetModel();
-  if (!model_manage) {
-    RCLCPP_ERROR(rclcpp::get_logger("mono2d_body_det"), "Invalid model");
-    return;
+  // 3. 将准备好的输入输出数据存进缓存
+  std::unique_lock<std::mutex> lg(mtx_img_);
+  if (cache_img_.size() > cache_len_limit_) {
+    CacheImgType img_msg = cache_img_.front();
+    cache_img_.pop();
+    auto dnn_output = img_msg.first;
+    auto pyramid = img_msg.second;
+    std::string ts =
+        std::to_string(dnn_output->image_msg_header->stamp.sec) + "." +
+        std::to_string(dnn_output->image_msg_header->stamp.nanosec);
+    RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"),
+                "drop cache_img_ ts %s",
+                ts.c_str());
+    msg_publisher_->publish(std::move(dnn_output->ai_msg));
   }
-  auto handlmk_output_desc = std::make_shared<HandLmkOutDesc>(
-      model_manage, kps_output_index_, "kps_branch");
-  handlmk_output_desc->rois = rois;
-  handlmk_output_desc->ts = ts;
-  std::vector<std::shared_ptr<OutputDescription>> output_descs{
-      std::dynamic_pointer_cast<OutputDescription>(handlmk_output_desc)};
-
-  // 2. 使用pyramid创建DNNInput对象inputs
-  // inputs将会作为模型的输入通过RunInferTask接口传入
-  std::vector<std::shared_ptr<DNNInput>> inputs;
-  for (size_t i = 0; i < rois->size(); i++) {
-    for (int32_t j = 0; j < model_manage->GetInputCount(); j++) {
-      inputs.push_back(pyramid);
-    }
-  }
-
-  uint32_t ret = 0;
-  // 3. 开始预测
-  ret = Predict(inputs, output_descs, rois, dnn_output);
-
-  // 4. 处理预测结果，如渲染到图片或者发布预测结果
-  if (ret != 0) {
-    RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
-                 "Run predict failed!");
-    return;
-  }
-
-  if (is_sync_mode_) {
-    if (dump_render_img_ && "nv12" == img_msg->encoding) {
-      static int count = 0;
-      count++;
-      if (count % 30 == 0) {
-        count = 0;
-        if (dnn_output && static_cast<int32_t>(dnn_output->outputs.size()) >
-                              kps_output_index_) {
-          auto landmarks_result = std::dynamic_pointer_cast<LandmarksResult>(
-              dnn_output->outputs.at(kps_output_index_));
-          RCLCPP_DEBUG(rclcpp::get_logger("hand lmk det node"),
-                       "landmarks_result->values.size: %d",
-                       landmarks_result->values.size());
-        }
-
-        std::string result_image =
-            "render_" + std::to_string(img_msg->header.stamp.sec) + "." +
-            std::to_string(img_msg->header.stamp.nanosec) + ".jpg";
-        Render(pyramid, result_image, dnn_output);
-      }
-    }
-  }
+  CacheImgType cache_img = std::make_pair<std::shared_ptr<HandLmkOutput>,
+                                          std::shared_ptr<NV12PyramidInput>>(
+      std::move(dnn_output), std::move(pyramid));
+  cache_img_.push(cache_img);
+  cv_img_.notify_one();
+  lg.unlock();
 }
 
 #ifdef SHARED_MEM_ENABLED
@@ -574,37 +547,11 @@ void HandLmkDetNode::SharedMemImgProcess(
      << ", step: " << img_msg->step << ", index: " << img_msg->index
      << ", stamp: " << img_msg->time_stamp.sec << "_"
      << img_msg->time_stamp.nanosec << ", data size: " << img_msg->data_size;
-  RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"), "%s", ss.str().c_str());
-
-  std::string ts = std::to_string(img_msg->time_stamp.sec) + "." +
-                   std::to_string(img_msg->time_stamp.nanosec);
-
-  std::shared_ptr<std::vector<hbDNNRoi>> rois = nullptr;
-  std::map<size_t, size_t> valid_roi_idx;
-  ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg = nullptr;
-  if (ai_msg_sub_node_->GetTargetRois(
-          img_msg->time_stamp, rois, valid_roi_idx, ai_msg, 200) < 0 ||
-      !ai_msg) {
-    RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
-                "Frame ts %s get invalid roi",
-                ts.c_str());
-    return;
-  }
-
-  if (!rois || rois->empty() || rois->size() != valid_roi_idx.size()) {
-    RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
-                "Frame ts %s has no hand",
-                ts.c_str());
-    if (!rois) {
-      rois = std::make_shared<std::vector<hbDNNRoi>>();
-    }
-  }
-
-  auto tp_start = std::chrono::system_clock::now();
+  RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"), "%s", ss.str().c_str());
 
   // 1. 将图片处理成模型输入数据类型DNNInput
   // 使用图片生成pym，NV12PyramidInput为DNNInput的子类
-  std::shared_ptr<hobot::easy_dnn::NV12PyramidInput> pyramid = nullptr;
+  std::shared_ptr<NV12PyramidInput> pyramid = nullptr;
   if ("nv12" ==
       std::string(reinterpret_cast<const char*>(img_msg->encoding.data()))) {
     pyramid = hobot::dnn_node::ImageProc::GetNV12PyramidFromNV12Img(
@@ -614,100 +561,53 @@ void HandLmkDetNode::SharedMemImgProcess(
         img_msg->height,
         img_msg->width);
   } else {
-    RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
+    RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"),
                 "Unsupported img encoding: %s",
                 img_msg->encoding);
   }
-
   if (!pyramid) {
-    RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"), "Get Nv12 pym fail!");
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Get Nv12 pym fail!");
     return;
   }
 
-  {
-    auto tp_now = std::chrono::system_clock::now();
-    auto interval =
-        std::chrono::duration_cast<std::chrono::milliseconds>(tp_now - tp_start)
-            .count();
-    RCLCPP_DEBUG(rclcpp::get_logger("hand lmk det node"),
-                 "after GetNV12Pyramid cost ms: %d",
-                 interval);
-  }
-
+  // 2. 创建推理输出数据
   auto dnn_output = std::make_shared<HandLmkOutput>();
+  // 将图片消息的header填充到输出数据中，用于表示推理输出对应的输入信息
   dnn_output->image_msg_header = std::make_shared<std_msgs::msg::Header>();
   dnn_output->image_msg_header->set__frame_id(std::to_string(img_msg->index));
   dnn_output->image_msg_header->set__stamp(img_msg->time_stamp);
-  dnn_output->valid_rois = rois;
-  dnn_output->valid_roi_idx = valid_roi_idx;
-  dnn_output->ai_msg = std::move(ai_msg);
+  // 将当前的时间戳填充到输出数据中，用于计算perf
   dnn_output->perf_preprocess.stamp_start.sec = time_start.tv_sec;
   dnn_output->perf_preprocess.stamp_start.nanosec = time_start.tv_nsec;
   dnn_output->perf_preprocess.set__type(model_name_ + "_preprocess");
 
-  auto model_manage = GetModel();
-  if (!model_manage) {
-    RCLCPP_ERROR(rclcpp::get_logger("mono2d_body_det"), "Invalid model");
-    return;
+  // 3. 将准备好的输入输出数据存进缓存
+  std::unique_lock<std::mutex> lg(mtx_img_);
+  if (cache_img_.size() > cache_len_limit_) {
+    CacheImgType img_msg = cache_img_.front();
+    cache_img_.pop();
+    auto dnn_output = img_msg.first;
+    auto pyramid = img_msg.second;
+    std::string ts =
+        std::to_string(dnn_output->image_msg_header->stamp.sec) + "." +
+        std::to_string(dnn_output->image_msg_header->stamp.nanosec);
+    RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"),
+                "drop cache_img_ ts %s",
+                ts.c_str());
+    msg_publisher_->publish(std::move(dnn_output->ai_msg));
   }
-  auto handlmk_output_desc = std::make_shared<HandLmkOutDesc>(
-      model_manage, kps_output_index_, "kps_branch");
-  handlmk_output_desc->rois = rois;
-  std::vector<std::shared_ptr<OutputDescription>> output_descs{
-      std::dynamic_pointer_cast<OutputDescription>(handlmk_output_desc)};
-
-  // 2. 使用pyramid创建DNNInput对象inputs
-  // inputs将会作为模型的输入通过RunInferTask接口传入
-  std::vector<std::shared_ptr<DNNInput>> inputs;
-  for (size_t i = 0; i < rois->size(); i++) {
-    for (int32_t j = 0; j < model_manage->GetInputCount(); j++) {
-      inputs.push_back(pyramid);
-    }
-  }
-
-  struct timespec time_now = {0, 0};
-  clock_gettime(CLOCK_REALTIME, &time_now);
-  dnn_output->perf_preprocess.stamp_end.sec = time_now.tv_sec;
-  dnn_output->perf_preprocess.stamp_end.nanosec = time_now.tv_nsec;
-
-  uint32_t ret = 0;
-  // 3. 开始预测
-  ret = Predict(inputs, output_descs, rois, dnn_output);
-
-  // 4. 处理预测结果，如渲染到图片或者发布预测结果
-  if (ret != 0) {
-    return;
-  }
-
-  if (is_sync_mode_) {
-    if (dump_render_img_) {
-      static int count = 0;
-      count++;
-      if (count % 30 == 0) {
-        count = 0;
-        if (dnn_output && static_cast<int32_t>(dnn_output->outputs.size()) >
-                              kps_output_index_) {
-          auto landmarks_result = std::dynamic_pointer_cast<LandmarksResult>(
-              dnn_output->outputs.at(kps_output_index_));
-          RCLCPP_DEBUG(rclcpp::get_logger("hand lmk det node"),
-                       "landmarks_result->values.size: %d",
-                       landmarks_result->values.size());
-        }
-
-        std::string result_image =
-            "render_" + std::to_string(img_msg->time_stamp.sec) + "." +
-            std::to_string(img_msg->time_stamp.nanosec) + ".jpg";
-        Render(pyramid, result_image, dnn_output);
-      }
-    }
-  }
+  CacheImgType cache_img = std::make_pair<std::shared_ptr<HandLmkOutput>,
+                                          std::shared_ptr<NV12PyramidInput>>(
+      std::move(dnn_output), std::move(pyramid));
+  cache_img_.push(cache_img);
+  cv_img_.notify_one();
+  lg.unlock();
 }
 #endif
 
-int HandLmkDetNode::Render(
-    const std::shared_ptr<hobot::easy_dnn::NV12PyramidInput>& pyramid,
-    std::string result_image,
-    std::shared_ptr<HandLmkOutput> lmk_result) {
+int HandLmkDetNode::Render(const std::shared_ptr<NV12PyramidInput>& pyramid,
+                           std::string result_image,
+                           std::shared_ptr<HandLmkOutput> lmk_result) {
   static cv::Scalar colors[] = {
       cv::Scalar(255, 0, 0),    // red
       cv::Scalar(255, 255, 0),  // yellow
@@ -730,7 +630,7 @@ int HandLmkDetNode::Render(
   delete[] buf;
   auto& mat = bgr;
 
-  RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"),
+  RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"),
               "h w: %d %d,  mat: %d %d",
               height,
               width,
@@ -741,7 +641,7 @@ int HandLmkDetNode::Render(
   if (lmk_result) {
     auto landmarks_result = std::dynamic_pointer_cast<LandmarksResult>(
         lmk_result->outputs.at(kps_output_index_));
-    RCLCPP_WARN(rclcpp::get_logger("hand lmk det node"),
+    RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"),
                 "landmarks_result->values.size: %d",
                 landmarks_result->values.size());
 
@@ -763,7 +663,7 @@ int HandLmkDetNode::Render(
     }
   }
 
-  RCLCPP_INFO(rclcpp::get_logger("hand lmk det node"),
+  RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"),
               "Draw result to file: %s",
               result_image.c_str());
   cv::imwrite(result_image, mat);
@@ -772,7 +672,7 @@ int HandLmkDetNode::Render(
 
 int HandLmkDetNode::Feedback() {
   if (access(fb_img_info_.image_.c_str(), R_OK) == -1) {
-    RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"),
                  "Image: %s not exist!",
                  fb_img_info_.image_.c_str());
     return -1;
@@ -788,7 +688,7 @@ int HandLmkDetNode::Feedback() {
   char* data = new char[len];
   ifs.read(data, len);
 
-  std::shared_ptr<hobot::easy_dnn::NV12PyramidInput> pyramid = nullptr;
+  std::shared_ptr<NV12PyramidInput> pyramid = nullptr;
   pyramid = hobot::dnn_node::ImageProc::GetNV12PyramidFromNV12Img(
       reinterpret_cast<const char*>(data),
       fb_img_info_.img_h,
@@ -797,7 +697,7 @@ int HandLmkDetNode::Feedback() {
       fb_img_info_.img_w);
   delete[] data;
   if (!pyramid) {
-    RCLCPP_ERROR(rclcpp::get_logger("hand lmk det node"),
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"),
                  "Get Nv12 pym fail with image: %s",
                  fb_img_info_.image_.c_str());
     return -1;
@@ -815,7 +715,7 @@ int HandLmkDetNode::Feedback() {
   roi.top += (roi.top % 2 == 0 ? 0 : 1);
   roi.right -= (roi.right % 2 == 1 ? 0 : 1);
   roi.bottom -= (roi.bottom % 2 == 1 ? 0 : 1);
-  RCLCPP_DEBUG(rclcpp::get_logger("hand lmk det node"),
+  RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_det"),
                "input hand roi: %d %d %d %d",
                roi.left,
                roi.top,
@@ -833,7 +733,7 @@ int HandLmkDetNode::Feedback() {
 
   auto model_manage = GetModel();
   if (!model_manage) {
-    RCLCPP_ERROR(rclcpp::get_logger("mono2d_body_det"), "Invalid model");
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Invalid model");
     return -1;
   }
   auto handlmk_output_desc = std::make_shared<HandLmkOutDesc>(
@@ -856,7 +756,7 @@ int HandLmkDetNode::Feedback() {
         static_cast<int32_t>(dnn_output->outputs.size()) > kps_output_index_) {
       auto landmarks_result = std::dynamic_pointer_cast<LandmarksResult>(
           dnn_output->outputs.at(kps_output_index_));
-      RCLCPP_DEBUG(rclcpp::get_logger("hand lmk det node"),
+      RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_det"),
                    "landmarks_result->values.size: %d",
                    landmarks_result->values.size());
     }
@@ -866,4 +766,130 @@ int HandLmkDetNode::Feedback() {
   }
 
   return 0;
+}
+
+void HandLmkDetNode::AiMsgProcess(
+    const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg) {
+  if (!msg || !rclcpp::ok() || !ai_msg_manage_) {
+    return;
+  }
+
+  std::stringstream ss;
+  ss << "Recved ai msg"
+     << ", frame_id: " << msg->header.frame_id
+     << ", stamp: " << msg->header.stamp.sec << "_"
+     << msg->header.stamp.nanosec;
+  RCLCPP_INFO(
+      rclcpp::get_logger("hand lmk ai msg sub"), "%s", ss.str().c_str());
+
+  ai_msg_manage_->Feed(msg);
+}
+
+void HandLmkDetNode::RunPredict() {
+  while (rclcpp::ok()) {
+    std::unique_lock<std::mutex> lg(mtx_img_);
+    cv_img_.wait(lg, [this]() { return !cache_img_.empty() || !rclcpp::ok(); });
+    if (cache_img_.empty()) {
+      continue;
+    }
+    if (!rclcpp::ok()) {
+      break;
+    }
+    CacheImgType img_msg = cache_img_.front();
+    cache_img_.pop();
+    lg.unlock();
+
+    auto dnn_output = img_msg.first;
+    auto pyramid = img_msg.second;
+
+    std::string ts =
+        std::to_string(dnn_output->image_msg_header->stamp.sec) + "." +
+        std::to_string(dnn_output->image_msg_header->stamp.nanosec);
+
+    std::shared_ptr<std::vector<hbDNNRoi>> rois = nullptr;
+    std::map<size_t, size_t> valid_roi_idx;
+    ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg = nullptr;
+    if (ai_msg_manage_->GetTargetRois(dnn_output->image_msg_header->stamp,
+                                      rois,
+                                      valid_roi_idx,
+                                      ai_msg,
+                                      200) < 0 ||
+        !ai_msg) {
+      RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"),
+                  "Frame ts %s get hand roi fail",
+                  ts.c_str());
+      continue;
+    }
+    if (!rois || rois->empty() || rois->size() != valid_roi_idx.size()) {
+      RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"),
+                  "Frame ts %s has no hand roi",
+                  ts.c_str());
+      if (!rois) {
+        rois = std::make_shared<std::vector<hbDNNRoi>>();
+      }
+    }
+
+    dnn_output->valid_rois = rois;
+    dnn_output->valid_roi_idx = valid_roi_idx;
+    dnn_output->ai_msg = std::move(ai_msg);
+
+    auto model_manage = GetModel();
+    if (!model_manage) {
+      RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Invalid model");
+      continue;
+    }
+    auto handlmk_output_desc = std::make_shared<HandLmkOutDesc>(
+        model_manage, kps_output_index_, "kps_branch");
+    handlmk_output_desc->rois = rois;
+    std::vector<std::shared_ptr<OutputDescription>> output_descs{
+        std::dynamic_pointer_cast<OutputDescription>(handlmk_output_desc)};
+
+    // 2. 使用pyramid创建DNNInput对象inputs
+    // inputs将会作为模型的输入通过RunInferTask接口传入
+    std::vector<std::shared_ptr<DNNInput>> inputs;
+    for (size_t i = 0; i < rois->size(); i++) {
+      for (int32_t j = 0; j < model_manage->GetInputCount(); j++) {
+        inputs.push_back(pyramid);
+      }
+    }
+
+    struct timespec time_now = {0, 0};
+    clock_gettime(CLOCK_REALTIME, &time_now);
+    dnn_output->perf_preprocess.stamp_end.sec = time_now.tv_sec;
+    dnn_output->perf_preprocess.stamp_end.nanosec = time_now.tv_nsec;
+
+    uint32_t ret = 0;
+    // 3. 开始预测
+    ret = Predict(inputs, output_descs, rois, dnn_output);
+
+    // 4. 处理预测结果，如渲染到图片或者发布预测结果
+    if (ret != 0) {
+      continue;
+    }
+
+    if (is_sync_mode_) {
+      if (dump_render_img_) {
+        static int count = 0;
+        count++;
+        if (count % 30 == 0) {
+          count = 0;
+          if (dnn_output && static_cast<int32_t>(dnn_output->outputs.size()) >
+                                kps_output_index_) {
+            auto landmarks_result = std::dynamic_pointer_cast<LandmarksResult>(
+                dnn_output->outputs.at(kps_output_index_));
+            RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_det"),
+                         "landmarks_result->values.size: %d",
+                         landmarks_result->values.size());
+          }
+
+          std::string result_image =
+              "render_" +
+              std::to_string(dnn_output->image_msg_header->stamp.sec) + "." +
+              std::to_string(dnn_output->image_msg_header->stamp.nanosec) +
+              ".jpg";
+          Render(pyramid, result_image, dnn_output);
+        }
+      }
+    }
+  }
 }

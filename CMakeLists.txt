@@ -76,7 +76,7 @@ add_executable(${PROJECT_NAME}
   src/main.cpp
   src/hand_lmk_det_node.cpp
   src/hand_lmk_output_parser.cpp
-  src/ai_msg_sub_node.cpp
+  src/ai_msg_manage.cpp
 )
 
 ament_target_dependencies(

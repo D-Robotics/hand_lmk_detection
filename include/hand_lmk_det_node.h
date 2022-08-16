@@ -31,7 +31,7 @@
 #include "ai_msgs/msg/capture_targets.hpp"
 #include "ai_msgs/msg/perception_targets.hpp"
 #include "dnn_node/dnn_node.h"
-#include "include/ai_msg_sub_node.h"
+#include "include/ai_msg_manage.h"
 
 #ifndef MONO2D_BODY_DET_NODE_H_
 #define MONO2D_BODY_DET_NODE_H_
@@ -84,7 +84,6 @@ struct FeedbackImgInfo {
 class HandLmkDetNode : public DnnNode {
  public:
   HandLmkDetNode(const std::string &node_name,
-                 std::shared_ptr<AiMsgSubNode> ai_msg_sub_node = nullptr,
                  const NodeOptions &options = NodeOptions());
   ~HandLmkDetNode() override;
 
@@ -141,11 +140,26 @@ class HandLmkDetNode : public DnnNode {
   std::string ros_img_topic_name_ = "/image_raw";
   void RosImgProcess(const sensor_msgs::msg::Image::ConstSharedPtr msg);
 
-  int Render(const std::shared_ptr<hobot::easy_dnn::NV12PyramidInput> &pym,
+  int Render(const std::shared_ptr<NV12PyramidInput> &pym,
              std::string result_image,
              std::shared_ptr<HandLmkOutput> lmk_result);
 
-  std::shared_ptr<AiMsgSubNode> ai_msg_sub_node_;
+  std::shared_ptr<AiMsgManage> ai_msg_manage_ = nullptr;
+  std::string ai_msg_sub_topic_name_ = "/hobot_mono2d_body_detection";
+  rclcpp::Subscription<ai_msgs::msg::PerceptionTargets>::SharedPtr
+      ai_msg_subscription_ = nullptr;
+  void AiMsgProcess(const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg);
+
+  // 将订阅到的图片数据转成pym之后缓存
+  // 在线程中执行推理，避免阻塞订阅IO通道，导致AI msg消息丢失
+  std::mutex mtx_img_;
+  std::condition_variable cv_img_;
+  using CacheImgType = std::pair<std::shared_ptr<HandLmkOutput>,
+                                 std::shared_ptr<NV12PyramidInput>>;
+  std::queue<CacheImgType> cache_img_;
+  size_t cache_len_limit_ = 8;
+  void RunPredict();
+  std::shared_ptr<std::thread> predict_task_ = nullptr;
 };
 
 #endif  // MONO2D_BODY_DET_NODE_H_
