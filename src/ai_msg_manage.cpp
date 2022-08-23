@@ -149,6 +149,15 @@ int AiMsgManage::GetTargetRois(
               bottom,
               max_size,
               min_size);
+          if (max_size >= roi_size_max_) {
+            RCLCPP_WARN(
+                rclcpp::get_logger("hand_lmk_msg_manage"),
+                "Move hand far from sensor!");
+          } else if (min_size <= roi_size_min_) {
+            RCLCPP_WARN(
+                rclcpp::get_logger("hand_lmk_msg_manage"),
+                "Move hand close to sensor!");
+          }
         }
 
         hand_roi_idx++;
