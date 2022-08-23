@@ -32,10 +32,6 @@
 #include "include/hand_lmk_output_parser.h"
 #include "rclcpp/rclcpp.hpp"
 
-#ifdef CV_BRIDGE_PKG_ENABLED
-#include <cv_bridge/cv_bridge.h>
-#endif
-
 #include "opencv2/core/mat.hpp"
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/imgproc.hpp"
@@ -462,16 +458,7 @@ void HandLmkDetNode::RosImgProcess(
   // 1. 将图片处理成模型输入数据类型DNNInput
   // 使用图片生成pym，NV12PyramidInput为DNNInput的子类
   std::shared_ptr<NV12PyramidInput> pyramid = nullptr;
-  if ("rgb8" == img_msg->encoding) {
-#ifdef CV_BRIDGE_PKG_ENABLED
-    auto cv_img =
-        cv_bridge::cvtColorForDisplay(cv_bridge::toCvShare(img_msg), "bgr8");
-    pyramid = ImageUtils::GetNV12Pyramid(
-        cv_img->image, img_msg->height, img_msg->width);
-#else
-    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Unsupport cv bridge");
-#endif
-  } else if ("nv12" == img_msg->encoding) {
+  if ("nv12" == img_msg->encoding) {
     // std::string fname = "img_" + std::to_string(img_msg->header.stamp.sec)
     //  + "." + std::to_string(img_msg->header.stamp.nanosec) + ".nv12";
     // std::ofstream ofs(fname);
@@ -484,6 +471,9 @@ void HandLmkDetNode::RosImgProcess(
         img_msg->width,
         img_msg->height,
         img_msg->width);
+  } else {
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Unsupport img encoding: %s",
+    img_msg->encoding.data());
   }
   if (!pyramid) {
     RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Get Nv12 pym fail");
