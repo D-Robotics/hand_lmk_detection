@@ -14,7 +14,6 @@
 
   <depend>rclcpp</depend>
   <depend>dnn_node</depend>
-  <depend>cv_bridge</depend>
   <depend>sensor_msgs</depend>
   <depend>hbm_img_msgs</depend>
   <depend>ai_msgs</depend>
