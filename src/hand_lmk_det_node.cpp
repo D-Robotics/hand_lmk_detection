@@ -496,15 +496,17 @@ void HandLmkDetNode::RosImgProcess(
   if (cache_img_.size() > cache_len_limit_) {
     CacheImgType img_msg = cache_img_.front();
     cache_img_.pop();
-    auto dnn_output = img_msg.first;
-    auto pyramid = img_msg.second;
+    auto drop_dnn_output = img_msg.first;
     std::string ts =
-        std::to_string(dnn_output->image_msg_header->stamp.sec) + "." +
-        std::to_string(dnn_output->image_msg_header->stamp.nanosec);
+        std::to_string(drop_dnn_output->image_msg_header->stamp.sec) + "." +
+        std::to_string(drop_dnn_output->image_msg_header->stamp.nanosec);
     RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"),
                 "drop cache_img_ ts %s",
                 ts.c_str());
-    msg_publisher_->publish(std::move(dnn_output->ai_msg));
+    // 可能只有图像消息，没有对应的AI消息
+    if (drop_dnn_output->ai_msg) {
+      msg_publisher_->publish(std::move(drop_dnn_output->ai_msg));
+    }
   }
   CacheImgType cache_img = std::make_pair<std::shared_ptr<HandLmkOutput>,
                                           std::shared_ptr<NV12PyramidInput>>(
@@ -576,15 +578,17 @@ void HandLmkDetNode::SharedMemImgProcess(
   if (cache_img_.size() > cache_len_limit_) {
     CacheImgType img_msg = cache_img_.front();
     cache_img_.pop();
-    auto dnn_output = img_msg.first;
-    auto pyramid = img_msg.second;
+    auto drop_dnn_output = img_msg.first;
     std::string ts =
-        std::to_string(dnn_output->image_msg_header->stamp.sec) + "." +
-        std::to_string(dnn_output->image_msg_header->stamp.nanosec);
+        std::to_string(drop_dnn_output->image_msg_header->stamp.sec) + "." +
+        std::to_string(drop_dnn_output->image_msg_header->stamp.nanosec);
     RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"),
                 "drop cache_img_ ts %s",
                 ts.c_str());
-    msg_publisher_->publish(std::move(dnn_output->ai_msg));
+    // 可能只有图像消息，没有对应的AI消息
+    if (drop_dnn_output->ai_msg) {
+      msg_publisher_->publish(std::move(drop_dnn_output->ai_msg));
+    }
   }
   CacheImgType cache_img = std::make_pair<std::shared_ptr<HandLmkOutput>,
                                           std::shared_ptr<NV12PyramidInput>>(
