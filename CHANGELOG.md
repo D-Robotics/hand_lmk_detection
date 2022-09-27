@@ -1,5 +1,10 @@
 # Changelog for package hand_lmk_detection
 
+tros_1.1.2 (2022-09-26)
+------------------
+1. 修复算法推理压力大时crash的问题。
+
+
 hhp_1.0.5RC1 (2022-08-23)
 ------------------
 1. 删除cv_bridge依赖，只支持处理NV12格式图片。对于bgr8等格式图片，由hobot codec统一处理。
