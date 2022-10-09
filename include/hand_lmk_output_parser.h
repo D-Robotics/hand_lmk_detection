@@ -24,7 +24,6 @@
 
 using hobot::dnn_node::DNNResult;
 using hobot::dnn_node::DNNTensor;
-using hobot::dnn_node::Filter2DResult;
 using hobot::dnn_node::InputDescription;
 using hobot::dnn_node::Model;
 using hobot::dnn_node::OutputDescription;
