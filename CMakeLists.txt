@@ -114,7 +114,7 @@ if(PLATFORM_J5)
   ${PROJECT_SOURCE_DIR}/config/J5/
   DESTINATION lib/${PROJECT_NAME}/config/
   )
-  install(FILE
+  install(FILES
   ${PROJECT_SOURCE_DIR}/config/960x540.nv12
   DESTINATION lib/${PROJECT_NAME}/config/
   )
