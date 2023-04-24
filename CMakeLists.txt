@@ -53,6 +53,17 @@ include_directories(include
   ${PROJECT_SOURCE_DIR}
 )
 
+if(PLATFORM_X3)
+  message("build platform X3")
+elseif(PLATFORM_J5)
+  message("build ${PROJECT_NAME} for platform J5")
+elseif(PLATFORM_X86)
+  message("build platform X86")
+else()
+  message("invalid platform, build platform X3 default")
+  set(PLATFORM_X3 ON)
+endif()
+
 message("CMAKE_SYSROOT is " ${CMAKE_SYSROOT})
 include_directories(
   ${CMAKE_SYSROOT}/usr/include/
@@ -98,10 +109,21 @@ install(
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY
-  ${PROJECT_SOURCE_DIR}/config/
+if(PLATFORM_J5)
+  install(DIRECTORY
+  ${PROJECT_SOURCE_DIR}/config/J5/
   DESTINATION lib/${PROJECT_NAME}/config/
-)
+  )
+  install(FILE
+  ${PROJECT_SOURCE_DIR}/config/960x540.nv12
+  DESTINATION lib/${PROJECT_NAME}/config/
+  )
+else()
+  install(DIRECTORY
+    ${PROJECT_SOURCE_DIR}/config/
+    DESTINATION lib/${PROJECT_NAME}/config/
+  )
+endif()
 
 install(DIRECTORY
 ${PROJECT_SOURCE_DIR}/launch/
