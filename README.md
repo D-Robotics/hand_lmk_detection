@@ -132,7 +132,7 @@ cp -r install/lib/mono2d_body_detection/config/ .
 cp -r install/lib/hand_lmk_detection/config/ .
 
 # 启动launch文件
-ros2 launch install/share/hand_lmk_detection/launch/hobot_hand_lmk_detection.launch.py
+ros2 launch install/share/hand_lmk_detection/launch/hand_lmk_detection.launch.py
 
 ```
 
