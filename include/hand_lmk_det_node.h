@@ -69,13 +69,13 @@ struct HandLmkOutput : public DnnNodeOutput {
 };
 
 struct FeedbackImgInfo {
-  std::string image_ = "config/960x540.nv12";
+  std::string image_ = "config/960x544.nv12";
   int img_w = 960;
-  int img_h = 540;
-  int32_t roi_left = 350;
-  int32_t roi_top = 212;
-  int32_t roi_right = 445;
-  int32_t roi_bottom = 313;
+  int img_h = 544;
+  int32_t roi_left = 181;
+  int32_t roi_top = 12;
+  int32_t roi_right = 382;
+  int32_t roi_bottom = 185;
 };
 
 class HandLmkDetNode : public DnnNode {
