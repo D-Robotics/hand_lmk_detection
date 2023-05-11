@@ -1,5 +1,11 @@
 # Changelog for package hand_lmk_detection
 
+tros_2.0.0 (2023-05-11)
+------------------
+1. 更新package.xml，支持应用独立打包
+2. 更新应用启动launch脚本
+
+
 tros_1.1.4 (2022-12-13)
 ------------------
 1. 在README文档中，增加板端编译时开关零拷贝的方法说明。
