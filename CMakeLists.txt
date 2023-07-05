@@ -115,7 +115,7 @@ if(PLATFORM_J5)
   DESTINATION lib/${PROJECT_NAME}/config/
   )
   install(FILES
-  ${PROJECT_SOURCE_DIR}/config/960x540.nv12
+  ${PROJECT_SOURCE_DIR}/config/960x544.nv12
   DESTINATION lib/${PROJECT_NAME}/config/
   )
 else()
