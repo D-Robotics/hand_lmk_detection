@@ -1,5 +1,9 @@
 # Changelog for package hand_lmk_detection
 
+tros_2.1.1 (2023-07-14)
+------------------
+1. 规范X5ultra产品名。
+
 tros_2.1.0 (2023-07-07)
 ------------------
 1. 适配RDK J5平台。
