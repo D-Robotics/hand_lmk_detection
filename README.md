@@ -6,7 +6,6 @@
 
 ![](./imgs/hand_lmk_index.jpeg)
 
-代码仓库：<https://github.com/HorizonRDK/hobot_vio.git>
 
 # 物料清单
 
@@ -24,6 +23,37 @@
 - 摄像头正确连接到RDK X3
 
 # 使用方法
+
+## 话题
+
+人体识别和手势唤醒的结果都通过[hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)话题发布，该话题的详细定义如下：
+```shell
+# 感知结果
+
+# 消息头
+std_msgs/Header header
+
+# 感知结果的处理帧率
+# fps val is invalid if fps is less than 0
+int16 fps
+
+# 性能统计信息，比如记录每个模型推理的耗时
+Perf[] perfs
+
+# 感知目标集合
+Target[] targets
+
+# 消失目标集合
+Target[] disappeared_targets
+```
+
+| 名称                 | 消息类型        | 说明|
+| ---------------------- | ----------- |---------------------------- |
+| /hobot_hand_lmk_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)  | 发布识别到的手势关键点信息（开启手势唤醒之后才会出现） |
+| /hobot_mono2d_body_detection          | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)   | 订阅前一个node识别到的人体目标信息，包括人体框、人脸框、手框、人体关键点 |
+| /hbmem_img | [hobot_msgs/hbm_img_msgs/msg/HbmMsg1080P](https://github.com/HorizonRDK/hobot_msgs/blob/develop/hbm_img_msgs/msg/HbmMsg1080P.msg)  | 当is_shared_mem_sub == 1时，用shared mem通信方式订阅上一个node发布图像数据|
+| /image_raw | hsensor_msgs/msg/Image  |  当is_shared_mem_sub == 0时，订阅用ros的普通方式订阅上一个node发布相关的图像数据|
+
 
 **1.安装功能包**
 
@@ -85,10 +115,4 @@ ros2 launch hand_lmk_detection hand_lmk_detection.launch.py
 | is_shared_mem_sub      | int         | 是否使用shared mem通信方式订阅图片消息。打开和关闭shared mem通信方式订阅图片的topic名分别为/hbmem_img和/image_raw。 | 0/1      | 0/1                  | 0                            |
 | ai_msg_pub_topic_name  | std::string | 发布包含人手关键点检测结果的AI消息的topic名                                                                         | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection    |
 | ai_msg_sub_topic_name_ | std::string | 订阅包含人手框检测结果的AI消息的topic名                                                                             | 否       | 根据实际部署环境配置 | /hobot_mono2d_body_detection |
-
-
-# 参考资料
-
-
-# 常见问题
 
