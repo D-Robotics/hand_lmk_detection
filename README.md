@@ -22,36 +22,6 @@
 
 # 使用方法
 
-## 话题
-
-人体识别和手势唤醒的结果都通过[hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)话题发布，该话题的详细定义如下：
-```shell
-# 感知结果
-
-# 消息头
-std_msgs/Header header
-
-# 感知结果的处理帧率
-# fps val is invalid if fps is less than 0
-int16 fps
-
-# 性能统计信息，比如记录每个模型推理的耗时
-Perf[] perfs
-
-# 感知目标集合
-Target[] targets
-
-# 消失目标集合
-Target[] disappeared_targets
-```
-
-| 名称                 | 消息类型        | 说明|
-| ---------------------- | ----------- |---------------------------- |
-| /hobot_hand_lmk_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)  | 发布识别到的手势关键点信息（开启手势唤醒之后才会出现） |
-| /hobot_mono2d_body_detection          | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)   | 订阅前一个node识别到的人体目标信息，包括人体框、人脸框、手框、人体关键点 |
-| /hbmem_img | [hobot_msgs/hbm_img_msgs/msg/HbmMsg1080P](https://github.com/HorizonRDK/hobot_msgs/blob/develop/hbm_img_msgs/msg/HbmMsg1080P.msg)  | 当is_shared_mem_sub == 1时，用shared mem通信方式订阅上一个node发布图像数据|
-| /image_raw | hsensor_msgs/msg/Image  |  当is_shared_mem_sub == 0时，订阅用ros的普通方式订阅上一个node发布相关的图像数据|
-
 
 **1.安装功能包**
 
@@ -100,9 +70,41 @@ ros2 launch hand_lmk_detection hand_lmk_detection.launch.py
 
 **3.查看效果**
 
-打开同一网络电脑的浏览器，访问IP地址（浏览器输入http://IP:8000，IP为地平线RDK的IP地址），即可看到视觉识别的实时效果。
+打开同一网络电脑的浏览器，访问IP地址（浏览器输入http://IP:8000，IP为地平线RDK的IP地址），即可看到视觉识别的实时效果:
+![](./imgs/hand_lmk_render.jpg)
 
 # 接口说明
+
+## 话题
+
+手关键点检测结果都通过[hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)话题发布，该话题的详细定义如下：
+```shell
+# 感知结果
+
+# 消息头
+std_msgs/Header header
+
+# 感知结果的处理帧率
+# fps val is invalid if fps is less than 0
+int16 fps
+
+# 性能统计信息，比如记录每个模型推理的耗时
+Perf[] perfs
+
+# 感知目标集合
+Target[] targets
+
+# 消失目标集合
+Target[] disappeared_targets
+```
+
+| 名称                 | 消息类型        | 说明|
+| ---------------------- | ----------- |---------------------------- |
+| /hobot_hand_lmk_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)  | 发布识别到的手关键点信息（开启手势唤醒之后才会出现） |
+| /hobot_mono2d_body_detection          | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)   | 订阅前一个node识别到的人体目标信息，包括人体框、人脸框、手框、人体关键点 |
+| /hbmem_img | [hobot_msgs/hbm_img_msgs/msg/HbmMsg1080P](https://github.com/HorizonRDK/hobot_msgs/blob/develop/hbm_img_msgs/msg/HbmMsg1080P.msg)  | 当is_shared_mem_sub == 1时，用shared mem通信方式订阅上一个node发布图像数据|
+| /image_raw | hsensor_msgs/msg/Image  |  当is_shared_mem_sub == 0时，订阅用ros的普通方式订阅上一个node发布相关的图像数据|
+
 
 ## 参数
 
@@ -111,6 +113,6 @@ ros2 launch hand_lmk_detection hand_lmk_detection.launch.py
 | is_sync_mode           | int         | 同步/异步推理模式。0：异步模式；1：同步模式                                                                         | 否       | 0/1                  | 0                            |
 | model_file_name        | std::string | 推理使用的模型文件                                                                                                  | 否       | 根据实际模型路径配置 | config/handLMKs.hbm          |
 | is_shared_mem_sub      | int         | 是否使用shared mem通信方式订阅图片消息。打开和关闭shared mem通信方式订阅图片的topic名分别为/hbmem_img和/image_raw。 | 0/1      | 0/1                  | 0                            |
-| ai_msg_pub_topic_name  | std::string | 发布包含人手关键点检测结果的AI消息的topic名                                                                         | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection    |
+| ai_msg_pub_topic_name  | std::string | 发布包含人手关键点检测结果消息的topic名                                                                         | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection    |
 | ai_msg_sub_topic_name_ | std::string | 订阅包含人手框检测结果的AI消息的topic名                                                                             | 否       | 根据实际部署环境配置 | /hobot_mono2d_body_detection |
 
