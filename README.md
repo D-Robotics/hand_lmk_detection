@@ -9,10 +9,10 @@
 
 # 物料清单
 
-| 机器人名称          | 生产厂家 | 参考链接                                                     |
+| 物料名称            | 生产厂家 | 参考链接                                                     |
 | :------------------ | -------- | ------------------------------------------------------------ |
-| RDK X3             | 多厂家 | [点击跳转](https://developer.horizon.ai/sunrise) |
-| camera             | 多厂家 | MIPI cam:[F37 200W像素](https://detail.tmall.com/item.htm?abbucket=12&id=683310105141&ns=1&spm=a230r.1.14.28.1dd135f0wI2LwA&skuId=4897731532963)/[GC4663 400W像素](https://detail.tmall.com/item.htm?abbucket=12&id=683310105141&ns=1&spm=a230r.1.14.28.1dd135f0wI2LwA&skuId=4897731532963)/[IMX219 800W像素](https://detail.tmall.com/item.htm?abbucket=9&id=710344235988&rn=259e73f46059c2e6fc9de133ba9ddddf&spm=a1z10.5-b-s.w4011-22651484606.159.55df6a83NWrGPi)或usb cam|
+| RDK X3 / RDK Ultra  | 多厂家 | [RDK X3](https://developer.horizon.cc/rdkx3)<br>[RDK Ultra](https://developer.horizon.cc/rdkultra) |
+| camera              | 多厂家 | [MIPI相机](https://developer.horizon.cc/nodehubdetail/168958376283445781)<br>[USB相机](https://developer.horizon.cc/nodehubdetail/168958376283445777)|
 
 
 # 准备工作
