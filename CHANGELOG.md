@@ -1,5 +1,9 @@
 # Changelog for package hand_lmk_detection
 
+tros_2.1.2 (2023-11-01)
+------------------
+1. 更新README。
+
 tros_2.1.1 (2023-07-14)
 ------------------
 1. 规范Rdkultra产品名。
