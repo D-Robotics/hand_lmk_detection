@@ -40,14 +40,8 @@ find_package(sensor_msgs REQUIRED)
 find_package(ai_msgs REQUIRED)
 find_package(dnn_node REQUIRED)
 
-# BUILD_HBMEM is set in aarch64_toolchainfile.cmake
-if (${BUILD_HBMEM})
-  message("using shared mem")
-  find_package(hbm_img_msgs REQUIRED)
-  add_definitions(-DSHARED_MEM_ENABLED)
-else()
-  message("not using shared mem")
-endif ()
+find_package(hbm_img_msgs REQUIRED)
+add_definitions(-DSHARED_MEM_ENABLED)
 
 include_directories(include
   ${PROJECT_SOURCE_DIR}
@@ -87,17 +81,8 @@ ament_target_dependencies(
   dnn_node
   sensor_msgs
   ai_msgs
+  hbm_img_msgs
 )
-
-if (${BUILD_HBMEM})
-  target_link_libraries(${PROJECT_NAME}
-    hbmem
-  )
-  ament_target_dependencies(
-    ${PROJECT_NAME}
-    hbm_img_msgs
-  )
-endif ()
 
 include_directories(include
 ${PROJECT_SOURCE_DIR}
