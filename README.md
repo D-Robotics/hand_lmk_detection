@@ -50,7 +50,6 @@ cp -r /opt/tros/${TROS_DISTRO}/lib/hand_lmk_detection/config/ .
 export CAM_TYPE=mipi
 
 # Launch the launch file
-```**Translate the content with Chinese characters into English while keeping the original format and content:**
 
 ros2 launch hand_lmk_detection hand_lmk_detection.launch.py
 ```
@@ -100,7 +99,9 @@ Target[] targets
 
 # Collection of disappeared targets
 Target[] disappeared_targets
-```| Name                    | Message Type                                   | Description                                         |
+```
+
+| Name                    | Message Type                                   | Description                                         |
 | ----------------------- | ------------------------------------------ | --------------------------------------- |
 | /hobot_hand_lmk_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg) | Publish information about detected hand keypoints (only appears after gesture wake-up is enabled) |
 | /hobot_mono2d_body_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg) | Subscribe to information about human body targets recognized by the previous node, including human body bounding box, face box, hand box, and human body keypoints |
