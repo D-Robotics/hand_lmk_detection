@@ -100,7 +100,6 @@ HandLmkDetNode::HandLmkDetNode(const std::string& node_name,
 
   if (1 == feed_type_) {
     Feedback();
-    rclcpp::shutdown();
   } else {
     predict_task_ = std::make_shared<std::thread>(
         std::bind(&HandLmkDetNode::RunPredict, this));
@@ -175,36 +174,17 @@ int HandLmkDetNode::SetNodePara() {
   return 0;
 }
 
-int HandLmkDetNode::SetOutputParser() {
-  RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"), "Set output parser.");
-  // set output parser
-  auto model_manage = GetModel();
-  if (!model_manage || !dnn_node_para_ptr_) {
-    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Invalid model");
-    return -1;
-  }
-
-  if (kps_output_index_ >= model_manage->GetOutputCount()) {
-    RCLCPP_ERROR(
-        rclcpp::get_logger("hand_lmk_det"),
-        "Error! Model %s output count is %d, unmatch with kps output index %d",
-        dnn_node_para_ptr_->model_name.c_str(),
-        model_manage->GetOutputCount(),
-        kps_output_index_);
-    return -1;
-  }
-
-  std::shared_ptr<OutputParser> kps_out_parser =
-      std::make_shared<HandLmkOutputParser>();
-  model_manage->SetOutputParser(kps_output_index_, kps_out_parser);
-
-  return 0;
-}
-
 int HandLmkDetNode::PostProcess(
     const std::shared_ptr<DnnNodeOutput>& node_output) {
   if (!rclcpp::ok()) {
     return 0;
+  }
+
+  RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"), "HandLmkDetNode::PostProcess");
+
+  if (!node_output) {
+    RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"), "Invalid node output");
+    return -1;
   }
 
   if (node_output->rt_stat->fps_updated) {
@@ -214,13 +194,8 @@ int HandLmkDetNode::PostProcess(
                 node_output->rt_stat->output_fps);
   }
 
-  if (!msg_publisher_) {
+  if (!msg_publisher_ && !feed_type_) {
     RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Invalid msg_publisher_");
-    return -1;
-  }
-
-  if (!node_output) {
-    RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"), "Invalid node output");
     return -1;
   }
 
@@ -232,18 +207,13 @@ int HandLmkDetNode::PostProcess(
   struct timespec time_now = {0, 0};
   clock_gettime(CLOCK_REALTIME, &time_now);
 
+  // 1. 解析模型输出向量
+  auto parser = std::make_shared<HandLmkOutputParser>();
   auto lmk_val = std::make_shared<LandmarksResult>();
-  for (const auto& output : hand_lmk_output->outputs) {
-    std::shared_ptr<LandmarksResult> lmk =
-        std::dynamic_pointer_cast<LandmarksResult>(output);
-    if (!lmk) {
-      return -1;
-    }
-    for (const auto& val : lmk->values) {
-      lmk_val->values.push_back(val);
-    }
+  if (hand_lmk_output->rois != nullptr) {
+    parser->Parse(lmk_val, hand_lmk_output->output_tensors[0], hand_lmk_output->rois);
   }
-
+  
   if (!lmk_val) {
     return -1;
   }
@@ -256,11 +226,32 @@ int HandLmkDetNode::PostProcess(
        << hand_lmk_output->image_msg_header->stamp.nanosec
        << ", hand rois size: " << hand_lmk_output->valid_rois->size()
        << ", hand rois idx size: " << hand_lmk_output->valid_roi_idx.size()
-       << ", hand outputs size: " << hand_lmk_output->outputs.size()
        << ", hand lmk size: " << lmk_val->values.size();
   }
   RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"), "%s", ss.str().c_str());
 
+  // 2. 渲染模型结果
+  if (hand_lmk_output->pyramid) {
+    if (feed_type_ || (dump_render_img_ && render_count_ % 30 == 0)) {
+      render_count_ = 0;
+      std::string image_name;
+      switch(feed_type_) {
+        case 1: image_name = "render.jpg"; break;
+        case 0: image_name = "render_" +
+            std::to_string(hand_lmk_output->image_msg_header->stamp.sec) + "." +
+            std::to_string(hand_lmk_output->image_msg_header->stamp.nanosec) + ".jpg"; break;
+      }
+      Render(hand_lmk_output->pyramid, image_name, hand_lmk_output->valid_rois, lmk_val);
+    }
+    render_count_++;
+  }
+
+  // 本地模式不需要发布推理话题消息
+  if (feed_type_) {
+    return 0;
+  }
+  
+  // 3. 发布模型推理话题消息
   ai_msgs::msg::PerceptionTargets::UniquePtr& msg = hand_lmk_output->ai_msg;
 
   if (lmk_val->values.size() != hand_lmk_output->valid_rois->size() ||
@@ -411,13 +402,11 @@ int HandLmkDetNode::PostProcess(
                  "Invalid ai msg, pub msg fail!");
     return -1;
   }
-
   return 0;
 }
 
 int HandLmkDetNode::Predict(
     std::vector<std::shared_ptr<DNNInput>>& inputs,
-    std::vector<std::shared_ptr<OutputDescription>>& output_descs,
     const std::shared_ptr<std::vector<hbDNNRoi>> rois,
     std::shared_ptr<DnnNodeOutput> dnn_output) {
   RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_det"),
@@ -430,7 +419,6 @@ int HandLmkDetNode::Predict(
               rois->size());
 
   return Run(inputs,
-             output_descs,
              dnn_output,
              rois,
              is_sync_mode_ == 1 ? true : false);
@@ -454,7 +442,6 @@ void HandLmkDetNode::RosImgProcess(
      << img_msg->header.stamp.nanosec
      << ", data size: " << img_msg->data.size();
   RCLCPP_INFO(rclcpp::get_logger("hand_lmk_det"), "%s", ss.str().c_str());
-
   // 1. 将图片处理成模型输入数据类型DNNInput
   // 使用图片生成pym，NV12PyramidInput为DNNInput的子类
   std::shared_ptr<NV12PyramidInput> pyramid = nullptr;
@@ -479,7 +466,8 @@ void HandLmkDetNode::RosImgProcess(
     RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Get Nv12 pym fail");
     return;
   }
-
+  
+  RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"), "prepare input");
   // 2. 创建推理输出数据
   auto dnn_output = std::make_shared<HandLmkOutput>();
   // 将图片消息的header填充到输出数据中，用于表示推理输出对应的输入信息
@@ -490,6 +478,10 @@ void HandLmkDetNode::RosImgProcess(
   dnn_output->perf_preprocess.stamp_start.sec = time_start.tv_sec;
   dnn_output->perf_preprocess.stamp_start.nanosec = time_start.tv_nsec;
   dnn_output->perf_preprocess.set__type(model_name_ + "_preprocess");
+
+  if (dump_render_img_) {
+    dnn_output->pyramid = pyramid;
+  }
 
   // 3. 将准备好的输入输出数据存进缓存
   std::unique_lock<std::mutex> lg(mtx_img_);
@@ -573,6 +565,10 @@ void HandLmkDetNode::SharedMemImgProcess(
   dnn_output->perf_preprocess.stamp_start.nanosec = time_start.tv_nsec;
   dnn_output->perf_preprocess.set__type(model_name_ + "_preprocess");
 
+  if (dump_render_img_) {
+    dnn_output->pyramid = pyramid;
+  }
+
   // 3. 将准备好的输入输出数据存进缓存
   std::unique_lock<std::mutex> lg(mtx_img_);
   if (cache_img_.size() > cache_len_limit_) {
@@ -601,7 +597,8 @@ void HandLmkDetNode::SharedMemImgProcess(
 
 int HandLmkDetNode::Render(const std::shared_ptr<NV12PyramidInput>& pyramid,
                            std::string result_image,
-                           std::shared_ptr<HandLmkOutput> lmk_result) {
+                           std::shared_ptr<std::vector<hbDNNRoi>> &valid_rois,
+                           std::shared_ptr<LandmarksResult> &lmk_result) {
   static cv::Scalar colors[] = {
       cv::Scalar(255, 0, 0),    // red
       cv::Scalar(255, 255, 0),  // yellow
@@ -632,14 +629,15 @@ int HandLmkDetNode::Render(const std::shared_ptr<NV12PyramidInput>& pyramid,
               mat.rows);
 
   // render kps
-  if (lmk_result) {
-    auto landmarks_result = std::dynamic_pointer_cast<LandmarksResult>(
-        lmk_result->outputs.at(kps_output_index_));
+  if (lmk_result && valid_rois) {
+    // auto landmarks_result = std::dynamic_pointer_cast<LandmarksResult>(
+    //     lmk_result->outputs.at(kps_output_index_));
+
     RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"),
                 "landmarks_result->values.size: %d",
-                landmarks_result->values.size());
+                lmk_result->values.size());
 
-    for (auto& rect : *lmk_result->valid_rois) {
+    for (auto& rect : *valid_rois) {
       cv::rectangle(mat,
                     cv::Point(rect.left, rect.top),
                     cv::Point(rect.right, rect.bottom),
@@ -647,9 +645,9 @@ int HandLmkDetNode::Render(const std::shared_ptr<NV12PyramidInput>& pyramid,
                     3);
     }
 
-    size_t lmk_num = landmarks_result->values.size();
+    size_t lmk_num = lmk_result->values.size();
     for (size_t idx = 0; idx < lmk_num; idx++) {
-      const auto& lmk = landmarks_result->values.at(idx);
+      const auto& lmk = lmk_result->values.at(idx);
       auto& color = colors[idx % 4];
       for (const auto& point : lmk) {
         cv::circle(mat, cv::Point(point.x, point.y), 3, color, 3);
@@ -698,67 +696,55 @@ int HandLmkDetNode::Feedback() {
   }
 
   auto rois = std::make_shared<std::vector<hbDNNRoi>>();
-  hbDNNRoi roi;
-  roi.left = fb_img_info_.roi_left;
-  roi.top = fb_img_info_.roi_top;
-  roi.right = fb_img_info_.roi_right;
-  roi.bottom = fb_img_info_.roi_bottom;
+  for (int i = 0; i < fb_img_info_.rois.size(); i++) {
+    hbDNNRoi roi;
 
-  // roi's left and top must be even, right and bottom must be odd
-  roi.left += (roi.left % 2 == 0 ? 0 : 1);
-  roi.top += (roi.top % 2 == 0 ? 0 : 1);
-  roi.right -= (roi.right % 2 == 1 ? 0 : 1);
-  roi.bottom -= (roi.bottom % 2 == 1 ? 0 : 1);
-  RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_det"),
-               "input hand roi: %d %d %d %d",
-               roi.left,
-               roi.top,
-               roi.right,
-               roi.bottom);
+    roi.left = fb_img_info_.rois[i][0];
+    roi.top = fb_img_info_.rois[i][1];
+    roi.right = fb_img_info_.rois[i][2];
+    roi.bottom = fb_img_info_.rois[i][3];
 
-  rois->push_back(roi);
+    // roi's left and top must be even, right and bottom must be odd
+    roi.left += (roi.left % 2 == 0 ? 0 : 1);
+    roi.top += (roi.top % 2 == 0 ? 0 : 1);
+    roi.right -= (roi.right % 2 == 1 ? 0 : 1);
+    roi.bottom -= (roi.bottom % 2 == 1 ? 0 : 1);
+    RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_det"),
+                "input hand roi: %d %d %d %d",
+                roi.left,
+                roi.top,
+                roi.right,
+                roi.bottom);
+
+    rois->push_back(roi);
+  }
 
   // 2. 使用pyramid创建DNNInput对象inputs
   // inputs将会作为模型的输入通过RunInferTask接口传入
-  auto inputs = std::vector<std::shared_ptr<DNNInput>>{pyramid};
+  std::vector<std::shared_ptr<DNNInput>> inputs;
+  for (size_t i = 0; i < rois->size(); i++) {
+    inputs.push_back(pyramid);
+  }
   auto dnn_output = std::make_shared<HandLmkOutput>();
   dnn_output->valid_rois = rois;
   dnn_output->valid_roi_idx[0] = 0;
+  dnn_output->pyramid = pyramid;
 
   auto model_manage = GetModel();
   if (!model_manage) {
     RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Invalid model");
     return -1;
   }
-  auto handlmk_output_desc = std::make_shared<HandLmkOutDesc>(
-      model_manage, kps_output_index_, "kps_branch");
-  handlmk_output_desc->rois = rois;
-  std::vector<std::shared_ptr<OutputDescription>> output_descs{
-      std::dynamic_pointer_cast<OutputDescription>(handlmk_output_desc)};
 
   uint32_t ret = 0;
   // 3. 开始预测
-  ret = Predict(inputs, output_descs, rois, dnn_output);
+  ret = Predict(inputs, rois, dnn_output);
 
   // 4. 处理预测结果，如渲染到图片或者发布预测结果
   if (ret != 0) {
     return -1;
   }
-
-  if (is_sync_mode_) {
-    if (dnn_output &&
-        static_cast<int32_t>(dnn_output->outputs.size()) > kps_output_index_) {
-      auto landmarks_result = std::dynamic_pointer_cast<LandmarksResult>(
-          dnn_output->outputs.at(kps_output_index_));
-      RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_det"),
-                   "landmarks_result->values.size: %d",
-                   landmarks_result->values.size());
-    }
-
-    std::string result_image = "render.jpg";
-    Render(pyramid, result_image, dnn_output);
-  }
-
+    
   return 0;
 }
 
@@ -832,11 +818,6 @@ void HandLmkDetNode::RunPredict() {
       RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Invalid model");
       continue;
     }
-    auto handlmk_output_desc = std::make_shared<HandLmkOutDesc>(
-        model_manage, kps_output_index_, "kps_branch");
-    handlmk_output_desc->rois = rois;
-    std::vector<std::shared_ptr<OutputDescription>> output_descs{
-        std::dynamic_pointer_cast<OutputDescription>(handlmk_output_desc)};
 
     // 2. 使用pyramid创建DNNInput对象inputs
     // inputs将会作为模型的输入通过RunInferTask接口传入
@@ -854,36 +835,11 @@ void HandLmkDetNode::RunPredict() {
 
     uint32_t ret = 0;
     // 3. 开始预测
-    ret = Predict(inputs, output_descs, rois, dnn_output);
+    ret = Predict(inputs, rois, dnn_output);
 
     // 4. 处理预测结果，如渲染到图片或者发布预测结果
     if (ret != 0) {
       continue;
-    }
-
-    if (is_sync_mode_) {
-      if (dump_render_img_) {
-        static int count = 0;
-        count++;
-        if (count % 30 == 0) {
-          count = 0;
-          if (dnn_output && static_cast<int32_t>(dnn_output->outputs.size()) >
-                                kps_output_index_) {
-            auto landmarks_result = std::dynamic_pointer_cast<LandmarksResult>(
-                dnn_output->outputs.at(kps_output_index_));
-            RCLCPP_DEBUG(rclcpp::get_logger("hand_lmk_det"),
-                         "landmarks_result->values.size: %d",
-                         landmarks_result->values.size());
-          }
-
-          std::string result_image =
-              "render_" +
-              std::to_string(dnn_output->image_msg_header->stamp.sec) + "." +
-              std::to_string(dnn_output->image_msg_header->stamp.nanosec) +
-              ".jpg";
-          Render(pyramid, result_image, dnn_output);
-        }
-      }
     }
   }
 }

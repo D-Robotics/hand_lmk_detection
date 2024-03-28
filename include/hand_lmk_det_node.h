@@ -29,6 +29,7 @@
 #include "ai_msgs/msg/perception_targets.hpp"
 #include "dnn_node/dnn_node.h"
 #include "include/ai_msg_manage.h"
+#include "include/hand_lmk_output_parser.h"
 
 #ifndef MONO2D_BODY_DET_NODE_H_
 #define MONO2D_BODY_DET_NODE_H_
@@ -39,19 +40,11 @@ using hobot::dnn_node::DNNInput;
 using hobot::dnn_node::DnnNode;
 using hobot::dnn_node::DnnNodeOutput;
 using hobot::dnn_node::DnnNodePara;
-using hobot::dnn_node::DNNResult;
-using hobot::dnn_node::ModelTaskType;
-using hobot::dnn_node::NV12PyramidInput;
-using hobot::dnn_node::TaskId;
-
-using hobot::dnn_node::Model;
-using hobot::dnn_node::ModelInferTask;
-using hobot::dnn_node::ModelManager;
-using hobot::dnn_node::ModelRoiInferTask;
 
 using hobot::dnn_node::DNNTensor;
-using hobot::dnn_node::OutputDescription;
-using hobot::dnn_node::OutputParser;
+using hobot::dnn_node::ModelTaskType;
+using hobot::dnn_node::ModelRoiInferTask;
+using hobot::dnn_node::NV12PyramidInput;
 
 using ai_msgs::msg::PerceptionTargets;
 
@@ -64,6 +57,10 @@ struct HandLmkOutput : public DnnNodeOutput {
   // std::vector<size_t> valid_roi_idx;
   // 原始roi的索引对应于valid_rois的索引
   std::map<size_t, size_t> valid_roi_idx;
+
+  // 算法推理使用的图像数据，用于本地渲染使用
+  std::shared_ptr<hobot::dnn_node::NV12PyramidInput> pyramid = nullptr;
+
   ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg;
   ai_msgs::msg::Perf perf_preprocess;
 };
@@ -72,10 +69,8 @@ struct FeedbackImgInfo {
   std::string image_ = "config/960x544.nv12";
   int img_w = 960;
   int img_h = 544;
-  int32_t roi_left = 181;
-  int32_t roi_top = 12;
-  int32_t roi_right = 382;
-  int32_t roi_bottom = 185;
+  std::vector<std::vector<int32_t>> rois = {{181, 12, 382, 185}, 
+                                            {625, 212, 806, 443}};
 };
 
 class HandLmkDetNode : public DnnNode {
@@ -86,7 +81,6 @@ class HandLmkDetNode : public DnnNode {
 
  protected:
   int SetNodePara() override;
-  int SetOutputParser() override;
 
   int PostProcess(const std::shared_ptr<DnnNodeOutput> &outputs) override;
 
@@ -110,6 +104,7 @@ class HandLmkDetNode : public DnnNode {
   int is_shared_mem_sub_ = 1;
 
   int dump_render_img_ = 0;
+  int render_count_ = 0;
 
   std::string ai_msg_pub_topic_name = "/hobot_hand_lmk_detection";
   rclcpp::Publisher<ai_msgs::msg::PerceptionTargets>::SharedPtr msg_publisher_ =
@@ -118,7 +113,6 @@ class HandLmkDetNode : public DnnNode {
   int Feedback();
 
   int Predict(std::vector<std::shared_ptr<DNNInput>> &inputs,
-              std::vector<std::shared_ptr<OutputDescription>> &output_descs,
               const std::shared_ptr<std::vector<hbDNNRoi>> rois,
               std::shared_ptr<DnnNodeOutput> dnn_output);
 
@@ -137,9 +131,10 @@ class HandLmkDetNode : public DnnNode {
   std::string ros_img_topic_name_ = "/image_raw";
   void RosImgProcess(const sensor_msgs::msg::Image::ConstSharedPtr msg);
 
-  int Render(const std::shared_ptr<NV12PyramidInput> &pym,
+  int Render(const std::shared_ptr<NV12PyramidInput> &pyramid,
              std::string result_image,
-             std::shared_ptr<HandLmkOutput> lmk_result);
+             std::shared_ptr<std::vector<hbDNNRoi>> &valid_rois,
+             std::shared_ptr<LandmarksResult> &lmk_result);
 
   std::shared_ptr<AiMsgManage> ai_msg_manage_ = nullptr;
   std::string ai_msg_sub_topic_name_ = "/hobot_mono2d_body_detection";
