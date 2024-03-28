@@ -20,14 +20,18 @@
 #include <utility>
 #include <vector>
 
+
+#include "rclcpp/rclcpp.hpp"
+
 #include "dnn_node/dnn_node_data.h"
 
-using hobot::dnn_node::DNNResult;
+
+// using hobot::dnn_node::DNNResult;
 using hobot::dnn_node::DNNTensor;
-using hobot::dnn_node::InputDescription;
+// using hobot::dnn_node::InputDescription;
 using hobot::dnn_node::Model;
-using hobot::dnn_node::OutputDescription;
-using hobot::dnn_node::SingleBranchOutputParser;
+// using hobot::dnn_node::OutputDescription;
+// using hobot::dnn_node::SingleBranchOutputParser;
 
 /**
  * \~Chinese @brief 2D坐标点
@@ -45,23 +49,23 @@ struct Point_ {
 typedef Point_<float> Point;
 typedef std::vector<Point> Landmarks;
 
-class LandmarksResult : public DNNResult {
+class LandmarksResult {
  public:
   std::vector<Landmarks> values;
 
-  void Reset() override { values.clear(); }
+  void Reset() { values.clear(); }
 };
 
-class HandLmkOutDesc : public OutputDescription {
- public:
-  HandLmkOutDesc(Model* mode, int index, std::string type = "detection")
-      : OutputDescription(mode, index, type) {}
+// class HandLmkOutDesc : public OutputDescription {
+//  public:
+//   HandLmkOutDesc(Model* mode, int index, std::string type = "detection")
+//       : OutputDescription(mode, index, type) {}
 
-  std::shared_ptr<std::vector<hbDNNRoi>> rois;
-  std::string ts;
-  // 由于每个roi对应一次Parse，使用present_roi_idx统计当前Parse对应的roi idx
-  size_t present_roi_idx = 0;
-};
+//   std::shared_ptr<std::vector<hbDNNRoi>> rois;
+//   std::string ts;
+//   // 由于每个roi对应一次Parse，使用present_roi_idx统计当前Parse对应的roi idx
+//   size_t present_roi_idx = 0;
+// };
 
 typedef enum {
   LAYOUT_NHWC = 0,
@@ -100,27 +104,28 @@ typedef struct {
   std::vector<float> value;  // batch * (nhwc), batch for resizer model
 } FloatTensor;
 
-class HandLmkOutputParser : public SingleBranchOutputParser<LandmarksResult> {
+class HandLmkOutputParser {
  public:
   HandLmkOutputParser() {}
   ~HandLmkOutputParser() {}
 
   // 对于roi infer task，每个roi对应一次Parse
   // 因此需要在Parse中实现output和roi的match处理，即当前的Parse对应的是那个roi
+  // int32_t Parse(
+  //     std::shared_ptr<LandmarksResult> &output,
+  //     std::shared_ptr<DNNTensor> &output_tensor,
+  //     std::shared_ptr<std::vector<hbDNNRoi>> rois);
   int32_t Parse(
-      std::shared_ptr<LandmarksResult>& output,
-      std::vector<std::shared_ptr<InputDescription>>& input_descriptions,
-      std::shared_ptr<OutputDescription>& output_description,
-      std::shared_ptr<DNNTensor>& output_tensor) override;
-
+      std::shared_ptr<LandmarksResult> &output,
+      std::shared_ptr<DNNTensor> &output_tensor,
+      std::shared_ptr<std::vector<hbDNNRoi>> rois);
  private:
   int i_o_stride_ = 4;
-
-  void LmksPostPro(const std::vector<FloatTensor>& float_tensors,
+  void LmksPostPro(const FloatTensor& float_tensor,
                    const int valid_offset,
                    const int valid_result_idx,
                    const hbDNNRoi& roi,
-                   std::shared_ptr<LandmarksResult>& output);
+                   std::shared_ptr<LandmarksResult>& output);                   
   void OutputTensors2FloatTensors(const DNNTensor& tensor,
                                   FloatTensor& float_tensor,
                                   int batch);

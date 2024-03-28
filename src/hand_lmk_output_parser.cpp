@@ -14,36 +14,14 @@
 
 #include "include/hand_lmk_output_parser.h"
 
-#include <memory>
-#include <vector>
-
-#include "rclcpp/rclcpp.hpp"
-
 int32_t HandLmkOutputParser::Parse(
     std::shared_ptr<LandmarksResult> &output,
-    std::vector<std::shared_ptr<InputDescription>> &input_descriptions,
-    std::shared_ptr<OutputDescription> &output_description,
-    std::shared_ptr<DNNTensor> &output_tensor) {
-  std::shared_ptr<std::vector<hbDNNRoi>> rois = nullptr;
-  int present_roi_idx = -1;
-  auto handlmk_output_desc =
-      std::dynamic_pointer_cast<HandLmkOutDesc>(output_description);
-  if (handlmk_output_desc) {
-    RCLCPP_DEBUG(rclcpp::get_logger("hand lmk parser"),
-                 "handlmk_output_desc->rois.size: %d",
-                 handlmk_output_desc->rois->size());
-    rois = handlmk_output_desc->rois;
-    present_roi_idx = handlmk_output_desc->present_roi_idx;
-    handlmk_output_desc->present_roi_idx++;
-  }
-  if (!rois || present_roi_idx < 0 ||
-      present_roi_idx >= static_cast<int>(rois->size())) {
-    return -1;
-  }
+    std::shared_ptr<DNNTensor> &output_tensor,
+    std::shared_ptr<std::vector<hbDNNRoi>> rois) {
 
-  if (!input_descriptions.empty()) {
-    RCLCPP_DEBUG(rclcpp::get_logger("hand lmk parser"),
-                 "empty input_descriptions");
+  if (rois == nullptr) {
+    RCLCPP_INFO(rclcpp::get_logger("hand lmk parser"), "get null rois");
+    return -1;
   }
 
   std::shared_ptr<LandmarksResult> landmarks_result = nullptr;
@@ -56,11 +34,10 @@ int32_t HandLmkOutputParser::Parse(
     landmarks_result->Reset();
   }
 
-  int valid_result_idx = 0;
   auto out_layers = 1;  // model_output_count_;
   // 定点转浮点
-  std::vector<FloatTensor> float_tensors_;
-  float_tensors_.resize(out_layers);
+  std::vector<FloatTensor> float_tensors;
+  float_tensors.resize(out_layers);
 
   if (!output_tensor) {
     RCLCPP_ERROR(rclcpp::get_logger("hand lmk parser"), "invalid out tensor");
@@ -69,7 +46,7 @@ int32_t HandLmkOutputParser::Parse(
   int batch = 1;  // rois->size();
   for (int i = 0; i < out_layers; i++) {
     const DNNTensor &tensor = *output_tensor;  // task->output_tensors_[i];
-    FloatTensor &float_tensor = float_tensors_[i];
+    FloatTensor &float_tensor = float_tensors[i];
     OutputTensors2FloatTensors(tensor, float_tensor, batch);
   }
 
@@ -77,50 +54,50 @@ int32_t HandLmkOutputParser::Parse(
   static int valid_offset = 1;
   static std::once_flag flag;
   std::call_once(flag, [&output_tensor]() {
-    for (int dim_idx = 0; dim_idx < 4; dim_idx++) {
+    for (int dim_idx = 1; dim_idx < 4; dim_idx++) {
       valid_offset *=
           output_tensor->properties.validShape.dimensionSize[dim_idx];
     }
   });
 
-  int box_idx = present_roi_idx;
   // 取对应的float_tensor解析
-  LmksPostPro(float_tensors_,
-              valid_offset,
-              valid_result_idx,
-              rois->at(box_idx),
-              landmarks_result);
-  valid_result_idx++;
+  for (int roi_idx = 0; roi_idx < static_cast<int>(rois->size()); roi_idx++) {
+    LmksPostPro(float_tensors[0],
+                  valid_offset,
+                  roi_idx,
+                  rois->at(roi_idx),
+                  landmarks_result);
+  }
 
   return 0;
 }
 
 void HandLmkOutputParser::LmksPostPro(
-    const std::vector<FloatTensor> &float_tensors,
+    const FloatTensor &float_tensor,
     const int valid_offset,
     const int valid_result_idx,
     const hbDNNRoi &roi,
     std::shared_ptr<LandmarksResult> &output) {
   auto mxnet_output =
-      float_tensors[0].value.data() + valid_result_idx * valid_offset;
+      float_tensor.value.data() + valid_result_idx * valid_offset;
   int box_height = floor(roi.bottom - roi.top);
   int box_width = floor(roi.right - roi.left);
-  auto ratio_h = float_tensors[0].dim[1] * i_o_stride_;
-  auto ratio_w = float_tensors[0].dim[2] * i_o_stride_;
+  auto ratio_h = float_tensor.dim[1] * i_o_stride_;
+  auto ratio_w = float_tensor.dim[2] * i_o_stride_;
 
   int step = 4;  // 4 for performance optimization, use 1 for normal cases
   Landmarks landmarks;
-  landmarks.resize(float_tensors[0].dim[3]);
+  landmarks.resize(float_tensor.dim[3]);
 
   std::stringstream ss;
   ss << "hand_lmk:\n";
-  for (int c = 0; c < float_tensors[0].dim[3]; ++c) {  // c
+  for (int c = 0; c < float_tensor.dim[3]; ++c) {  // c
     float max_value = 0;
     int max_index[2] = {0, 0};
-    for (auto h = 0; h < float_tensors[0].dim[1]; h += step) {    // h
-      for (auto w = 0; w < float_tensors[0].dim[2]; w += step) {  // w
-        int index = h * float_tensors[0].dim[2] * float_tensors[0].dim[3] +
-                    w * float_tensors[0].dim[3] + c;
+    for (auto h = 0; h < float_tensor.dim[1]; h += step) {    // h
+      for (auto w = 0; w < float_tensor.dim[2]; w += step) {  // w
+        int index = h * float_tensor.dim[2] * float_tensor.dim[3] +
+                    w * float_tensor.dim[3] + c;
         float value = mxnet_output[index];
         if (value > max_value) {
           max_value = value;
@@ -132,10 +109,10 @@ void HandLmkOutputParser::LmksPostPro(
     // performance optimization
     auto is_max = false;
     auto campare_func =
-        [&float_tensors, &max_index, &max_value, &is_max, mxnet_output, this](
+        [&float_tensor, &max_index, &max_value, &is_max, mxnet_output, this](
             int h, int w, int c) {
-          int index = h * float_tensors[0].dim[2] * float_tensors[0].dim[3] +
-                      w * float_tensors[0].dim[3] + c;
+          int index = h * float_tensor.dim[2] * float_tensor.dim[3] +
+                      w * float_tensor.dim[3] + c;
           if (max_value < mxnet_output[index]) {
             max_value = mxnet_output[index];
             max_index[0] = h;
@@ -150,13 +127,13 @@ void HandLmkOutputParser::LmksPostPro(
       if (h > 0) {
         campare_func(h - 1, w, c);
       }
-      if (h < float_tensors[0].dim[1] - 1) {
+      if (h < float_tensor.dim[1] - 1) {
         campare_func(h + 1, w, c);
       }
       if (w > 0) {
         campare_func(h, w - 1, c);
       }
-      if (w < float_tensors[0].dim[2] - 1) {
+      if (w < float_tensor.dim[2] - 1) {
         campare_func(h, w + 1, c);
       }
     }
@@ -166,18 +143,18 @@ void HandLmkOutputParser::LmksPostPro(
     float x = max_index[1];
 
     float diff_x = 0, diff_y = 0;
-    if (y > 0 && y < float_tensors[0].dim[1] - 1) {
-      int top = (y - 1) * float_tensors[0].dim[2] * float_tensors[0].dim[3] +
-                x * float_tensors[0].dim[3] + c;
-      int down = (y + 1) * float_tensors[0].dim[2] * float_tensors[0].dim[3] +
-                 x * float_tensors[0].dim[3] + c;
+    if (y > 0 && y < float_tensor.dim[1] - 1) {
+      int top = (y - 1) * float_tensor.dim[2] * float_tensor.dim[3] +
+                x * float_tensor.dim[3] + c;
+      int down = (y + 1) * float_tensor.dim[2] * float_tensor.dim[3] +
+                 x * float_tensor.dim[3] + c;
       diff_y = mxnet_output[down] - mxnet_output[top];
     }
-    if (x > 0 && x < float_tensors[0].dim[2] - 1) {
-      int left = y * float_tensors[0].dim[2] * float_tensors[0].dim[3] +
-                 (x - 1) * float_tensors[0].dim[3] + c;
-      int right = y * float_tensors[0].dim[2] * float_tensors[0].dim[3] +
-                  (x + 1) * float_tensors[0].dim[3] + c;
+    if (x > 0 && x < float_tensor.dim[2] - 1) {
+      int left = y * float_tensor.dim[2] * float_tensor.dim[3] +
+                 (x - 1) * float_tensor.dim[3] + c;
+      int right = y * float_tensor.dim[2] * float_tensor.dim[3] +
+                  (x + 1) * float_tensor.dim[3] + c;
       diff_x = mxnet_output[right] - mxnet_output[left];
     }
 
