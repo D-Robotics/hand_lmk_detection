@@ -180,10 +180,8 @@ int HandLmkDetNode::PostProcess(
     return 0;
   }
 
-  RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"), "HandLmkDetNode::PostProcess");
-
   if (!node_output) {
-    RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"), "Invalid node output");
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Invalid node output");
     return -1;
   }
 
