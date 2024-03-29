@@ -19,7 +19,7 @@ int32_t HandLmkOutputParser::Parse(
     std::shared_ptr<DNNTensor> &output_tensor,
     std::shared_ptr<std::vector<hbDNNRoi>> rois) {
 
-  if (rois == nullptr) {
+  if (rois == nullptr || static_cast<int>(rois->size()) == 0) {
     RCLCPP_INFO(rclcpp::get_logger("hand lmk parser"), "get null rois");
     return -1;
   }

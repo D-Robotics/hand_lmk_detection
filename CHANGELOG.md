@@ -1,6 +1,6 @@
 # Changelog for package hand_lmk_detection
 
-tros_2.3.0 (2024-03-28)
+tros_2.3.0 (2024-03-29)
 ------------------
 1. 新增适配ros2 humble零拷贝。
 2. 适配重构dnn_node。
