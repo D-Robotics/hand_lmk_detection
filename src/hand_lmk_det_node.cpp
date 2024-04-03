@@ -130,7 +130,7 @@ HandLmkDetNode::HandLmkDetNode(const std::string& node_name,
       sharedmem_img_subscription_ =
           this->create_subscription<hbm_img_msgs::msg::HbmMsg1080P>(
               sharedmem_img_topic_name_,
-              10,
+              rclcpp::SensorDataQoS(),
               std::bind(&HandLmkDetNode::SharedMemImgProcess,
                         this,
                         std::placeholders::_1));
