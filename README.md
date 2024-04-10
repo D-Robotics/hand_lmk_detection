@@ -29,15 +29,23 @@ The hand keypoints index is as shown in the figure below:
 
 After booting the robot, connect to the robot via SSH terminal or VNC, click the "One-click Deployment" button at the top right of this page, copy and run the following command on the RDK system to complete the installation of related nodes.
 
+tros foxy:
 ```bash
 sudo apt update
 sudo apt install -y tros-hand-lmk-detection
+```
+
+tros humble:
+```bash
+sudo apt update
+sudo apt install -y tros-humble-hand-lmk-detection
 ```
 
 **2. Run the Hand Keypoint Detection Feature**
 
 **Publishing Images Using MIPI Camera**
 
+tros foxy:
 ```shell
 # Configure the tros.b environment
 source /opt/tros/setup.bash
@@ -54,11 +62,45 @@ export CAM_TYPE=mipi
 ros2 launch hand_lmk_detection hand_lmk_detection.launch.py
 ```
 
+tros humble:
+```shell
+# Configure the tros.b humble environment
+source /opt/tros/humble/setup.bash
+
+# Copy the necessary configuration files for running the example from the tros.b installation path.
+cp -r /opt/tros/${TROS_DISTRO}/lib/mono2d_body_detection/config/ .
+cp -r /opt/tros/${TROS_DISTRO}/lib/hand_lmk_detection/config/ .
+
+# Configure the MIPI camera
+export CAM_TYPE=mipi
+
+# Launch the launch file
+
+ros2 launch hand_lmk_detection hand_lmk_detection.launch.py
+```
+
 **Publish Images Using USB Camera**
 
+tros foxy:
 ```shell
 # Set up the tros.b environment
 source /opt/tros/setup.bash
+
+# Copy the configuration files needed for running examples from the installation path of tros.b.
+cp -r /opt/tros/${TROS_DISTRO}/lib/mono2d_body_detection/config/ .
+cp -r /opt/tros/${TROS_DISTRO}/lib/hand_lmk_detection/config/ .
+
+# Configure the USB camera
+export CAM_TYPE=usb
+
+# Launch the launch file
+ros2 launch hand_lmk_detection hand_lmk_detection.launch.py
+```
+
+tros humble:
+```shell
+# Set up the tros.b humble environment
+source /opt/tros/humble/setup.bash
 
 # Copy the configuration files needed for running examples from the installation path of tros.b.
 cp -r /opt/tros/${TROS_DISTRO}/lib/mono2d_body_detection/config/ .
