@@ -49,13 +49,19 @@ include_directories(include
 
 if(PLATFORM_X3)
   message("build platform X3")
+  set(PREFIX_PATH x3)
 elseif(PLATFORM_Rdkultra)
   message("build ${PROJECT_NAME} for platform Rdkultra")
+  set(PREFIX_PATH rdkultra)
+elseif(PLATFORM_X5)
+  message("build platform X5")
+  set(PREFIX_PATH x5)
 elseif(PLATFORM_X86)
   message("build platform X86")
+  set(PREFIX_PATH x3)
 else()
   message("invalid platform, build platform X3 default")
-  set(PLATFORM_X3 ON)
+  set(PREFIX_PATH x3)
 endif()
 
 message("CMAKE_SYSROOT is " ${CMAKE_SYSROOT})
@@ -66,6 +72,7 @@ include_directories(
 
 link_directories(
   ${CMAKE_SYSROOT}/usr/lib/hbbpu/
+  ${CMAKE_SYSROOT}/usr/lib/hbmedia/
 )
 
 add_executable(${PROJECT_NAME}
@@ -94,21 +101,15 @@ install(
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
-if(PLATFORM_Rdkultra)
-  install(DIRECTORY
-  ${PROJECT_SOURCE_DIR}/config/Rdkultra/
+install(DIRECTORY
+  ${PROJECT_SOURCE_DIR}/config/${PREFIX_PATH}/
   DESTINATION lib/${PROJECT_NAME}/config/
-  )
-  install(FILES
+)
+
+install(FILES
   ${PROJECT_SOURCE_DIR}/config/960x544.nv12
   DESTINATION lib/${PROJECT_NAME}/config/
-  )
-else()
-  install(DIRECTORY
-    ${PROJECT_SOURCE_DIR}/config/
-    DESTINATION lib/${PROJECT_NAME}/config/
-  )
-endif()
+)
 
 install(DIRECTORY
 ${PROJECT_SOURCE_DIR}/launch/
