@@ -13,13 +13,13 @@ The hand keypoints index is as shown in the figure below:
 
 | Item Name           | Manufacturer | Reference Links                                              |
 | :------------------ | ------------ | ------------------------------------------------------------ |
-| RDK X3 / RDK Ultra  | Various      | [RDK X3](https://developer.horizon.cc/rdkx3)<br>[RDK Ultra](https://developer.horizon.cc/rdkultra) |
+| RDK X3 / RDK Ultra  | Various      | [RDK X3](https://developer.d-robotics.cc/rdkx3)<br>[RDK Ultra](https://developer.horizon.cc/rdkultra) |
 | camera              | Various      | [MIPI Camera](https://developer.horizon.cc/nodehubdetail/168958376283445781)<br>[USB Camera](https://developer.horizon.cc/nodehubdetail/168958376283445777)|
 
 
 # Preparation
 
-- The Horizon RDK has been flashed with the Ubuntu 20.04 system image provided by Horizon.
+- The RDK has been flashed with the Ubuntu 20.04.
 - The camera is correctly connected to the RDK X3.
 
 # Instructions
@@ -122,7 +122,7 @@ Open a web browser on the same network computer and visit [http://IP:8000](http:
 
 ## Topics
 
-The results of hand keypoint detection are published through the [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg) topic, which is defined in detail as follows:
+The results of hand keypoint detection are published through the [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/D-Robotics/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg) topic, which is defined in detail as follows:
 ```shell
 # Perception Results
 
@@ -145,9 +145,9 @@ Target[] disappeared_targets
 
 | Name                    | Message Type                                   | Description                                         |
 | ----------------------- | ------------------------------------------ | --------------------------------------- |
-| /hobot_hand_lmk_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg) | Publish information about detected hand keypoints (only appears after gesture wake-up is enabled) |
-| /hobot_mono2d_body_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg) | Subscribe to information about human body targets recognized by the previous node, including human body bounding box, face box, hand box, and human body keypoints |
-| /hbmem_img | [hobot_msgs/hbm_img_msgs/msg/HbmMsg1080P](https://github.com/HorizonRDK/hobot_msgs/blob/develop/hbm_img_msgs/msg/HbmMsg1080P.msg) | When is_shared_mem_sub == 1, subscribe to image data published by the previous node using shared memory communication method |
+| /hobot_hand_lmk_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/D-Robotics/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg) | Publish information about detected hand keypoints (only appears after gesture wake-up is enabled) |
+| /hobot_mono2d_body_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/D-Robotics/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg) | Subscribe to information about human body targets recognized by the previous node, including human body bounding box, face box, hand box, and human body keypoints |
+| /hbmem_img | [hobot_msgs/hbm_img_msgs/msg/HbmMsg1080P](https://github.com/D-Robotics/hobot_msgs/blob/develop/hbm_img_msgs/msg/HbmMsg1080P.msg) | When is_shared_mem_sub == 1, subscribe to image data published by the previous node using shared memory communication method |
 | /image_raw | hsensor_msgs/msg/Image | When is_shared_mem_sub == 0, subscribe to related image data published by the previous node using ROS's normal subscription method |
 
 
