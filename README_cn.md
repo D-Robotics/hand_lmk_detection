@@ -13,14 +13,14 @@
 
 | 物料名称            | 生产厂家 | 参考链接                                                     |
 | :------------------ | -------- | ------------------------------------------------------------ |
-| RDK X3 / RDK Ultra  | 多厂家 | [RDK X3](https://developer.d-robotics.cc/rdkx3)<br>[RDK Ultra](https://developer.horizon.cc/rdkultra) |
+| RDK X3 / RDK X5 / RDK Ultra  | 多厂家 | [RDK X3](https://developer.d-robotics.cc/rdkx3)<br>[RDK Ultra](https://developer.horizon.cc/rdkultra) |
 | camera              | 多厂家 | [MIPI相机](https://developer.horizon.cc/nodehubdetail/168958376283445781)<br>[USB相机](https://developer.horizon.cc/nodehubdetail/168958376283445777)|
 
 
 # 准备工作
 
-- RDK已烧录好Ubuntu 20.04系统镜像
-- 摄像头正确连接到RDK X3
+- RDK已烧录好Ubuntu系统镜像
+- 摄像头正确连接到RDK
 
 # 使用方法
 

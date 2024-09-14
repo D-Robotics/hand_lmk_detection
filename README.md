@@ -13,14 +13,14 @@ The hand keypoints index is as shown in the figure below:
 
 | Item Name           | Manufacturer | Reference Links                                              |
 | :------------------ | ------------ | ------------------------------------------------------------ |
-| RDK X3 / RDK Ultra  | Various      | [RDK X3](https://developer.d-robotics.cc/rdkx3)<br>[RDK Ultra](https://developer.horizon.cc/rdkultra) |
+| RDK X3 / RDK X5 / RDK Ultra  | Various      | [RDK X3](https://developer.d-robotics.cc/rdkx3)<br>[RDK Ultra](https://developer.horizon.cc/rdkultra) |
 | camera              | Various      | [MIPI Camera](https://developer.horizon.cc/nodehubdetail/168958376283445781)<br>[USB Camera](https://developer.horizon.cc/nodehubdetail/168958376283445777)|
 
 
 # Preparation
 
-- The RDK has been flashed with the Ubuntu 20.04.
-- The camera is correctly connected to the RDK X3.
+- The RDK has been flashed with the Ubuntu.
+- The camera is correctly connected to the RDK.
 
 # Instructions
 
