@@ -50,11 +50,8 @@ using ai_msgs::msg::PerceptionTargets;
 
 struct HandLmkOutput : public DnnNodeOutput {
   std::shared_ptr<std_msgs::msg::Header> image_msg_header = nullptr;
-  // std::shared_ptr<std::vector<hbDNNRoi>> rois;
   // 符合resizer模型限制条件的roi
   std::shared_ptr<std::vector<hbDNNRoi>> valid_rois;
-  // 符合resizer模型限制条件的roi对应于原始roi的索引
-  // std::vector<size_t> valid_roi_idx;
   // 原始roi的索引对应于valid_rois的索引
   std::map<size_t, size_t> valid_roi_idx;
 
@@ -97,6 +94,7 @@ class HandLmkDetNode : public DnnNode {
   int model_input_height_ = -1;
   int32_t model_output_count_ = 1;
   const int32_t kps_output_index_ = 0;
+  float expand_scale_ = 1.25;
 
   int is_sync_mode_ = 0;
 
@@ -141,6 +139,9 @@ class HandLmkDetNode : public DnnNode {
   rclcpp::Subscription<ai_msgs::msg::PerceptionTargets>::SharedPtr
       ai_msg_subscription_ = nullptr;
   void AiMsgProcess(const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg);
+  
+  int NormalizeRoi(const hbDNNRoi *src, hbDNNRoi *dst,
+                  float norm_ratio, uint32_t total_w, uint32_t total_h);
 
   // 将订阅到的图片数据转成pym之后缓存
   // 在线程中执行推理，避免阻塞订阅IO通道，导致AI msg消息丢失

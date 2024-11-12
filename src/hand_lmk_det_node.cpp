@@ -208,8 +208,8 @@ int HandLmkDetNode::PostProcess(
   // 1. 解析模型输出向量
   auto parser = std::make_shared<HandLmkOutputParser>();
   auto lmk_val = std::make_shared<LandmarksResult>();
-  if (hand_lmk_output->rois != nullptr) {
-    parser->Parse(lmk_val, hand_lmk_output->output_tensors[0], hand_lmk_output->rois);
+  if (hand_lmk_output->valid_rois != nullptr) {
+    parser->Parse(lmk_val, hand_lmk_output->output_tensors[0], hand_lmk_output->valid_rois);
   }
   
   if (!lmk_val) {
@@ -807,7 +807,15 @@ void HandLmkDetNode::RunPredict() {
       }
     }
 
-    dnn_output->valid_rois = rois;
+    dnn_output->valid_rois = std::make_shared<std::vector<hbDNNRoi>>();
+    for (const auto& roi : *rois) {
+      hbDNNRoi normed_roi;
+      NormalizeRoi(&roi, &normed_roi, expand_scale_,
+        pyramid->width, pyramid->height);
+      dnn_output->valid_rois->push_back(normed_roi);
+    }
+
+    // dnn_output->valid_rois = rois;
     dnn_output->valid_roi_idx = valid_roi_idx;
     dnn_output->ai_msg = std::move(ai_msg);
 
@@ -820,7 +828,7 @@ void HandLmkDetNode::RunPredict() {
     // 2. 使用pyramid创建DNNInput对象inputs
     // inputs将会作为模型的输入通过RunInferTask接口传入
     std::vector<std::shared_ptr<DNNInput>> inputs;
-    for (size_t i = 0; i < rois->size(); i++) {
+    for (size_t i = 0; i < dnn_output->valid_rois->size(); i++) {
       for (int32_t j = 0; j < model_manage->GetInputCount(); j++) {
         inputs.push_back(pyramid);
       }
@@ -833,7 +841,7 @@ void HandLmkDetNode::RunPredict() {
 
     uint32_t ret = 0;
     // 3. 开始预测
-    ret = Predict(inputs, rois, dnn_output);
+    ret = Predict(inputs, dnn_output->valid_rois, dnn_output);
 
     // 4. 处理预测结果，如渲染到图片或者发布预测结果
     if (ret != 0) {
@@ -841,3 +849,33 @@ void HandLmkDetNode::RunPredict() {
     }
   }
 }
+
+int HandLmkDetNode::NormalizeRoi(const hbDNNRoi *src,
+                            hbDNNRoi *dst,
+                            float norm_ratio,
+                            uint32_t total_w,
+                            uint32_t total_h) {
+  *dst = *src;
+  float box_w = dst->right - dst->left;
+  float box_h = dst->bottom - dst->top;
+  float center_x = (dst->left + dst->right) / 2.0f;
+  float center_y = (dst->top + dst->bottom) / 2.0f;
+  float w_new = box_w;
+  float h_new = box_h;
+  
+  // {"norm_by_lside_ratio", NormMethod::BPU_MODEL_NORM_BY_LSIDE_RATIO},
+  h_new = box_h * norm_ratio;
+  w_new = box_w * norm_ratio;
+  dst->left = center_x - w_new / 2;
+  dst->right = center_x + w_new / 2;
+  dst->top = center_y - h_new / 2;
+  dst->bottom = center_y + h_new / 2;
+
+  dst->left = dst->left < 0 ? 0.0f : dst->left;
+  dst->top = dst->top < 0 ? 0.0f : dst->top;
+  dst->right = dst->right > total_w ? total_w : dst->right;
+  dst->bottom = dst->bottom > total_h ? total_h : dst->bottom;
+
+  return 0;
+}
+
