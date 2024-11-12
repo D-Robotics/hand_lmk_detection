@@ -186,10 +186,13 @@ int HandLmkDetNode::PostProcess(
   }
 
   if (node_output->rt_stat->fps_updated) {
-    RCLCPP_WARN(rclcpp::get_logger("hand_lmk_det"),
-                "input fps: %.2f, out fps: %.2f",
-                node_output->rt_stat->input_fps,
-                node_output->rt_stat->output_fps);
+    RCLCPP_WARN(this->get_logger(),
+            "input fps: %.2f, out fps: %.2f, "
+            "infer time ms: %d, post process time ms: %d",
+            node_output->rt_stat->input_fps,
+            node_output->rt_stat->output_fps,
+            node_output->rt_stat->infer_time_ms,
+            node_output->rt_stat->parse_time_ms);
   }
 
   if (!msg_publisher_ && !feed_type_) {
