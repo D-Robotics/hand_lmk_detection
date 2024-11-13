@@ -185,6 +185,20 @@ int HandLmkDetNode::PostProcess(
     return -1;
   }
 
+  if (!msg_publisher_ && !feed_type_) {
+    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Invalid msg_publisher_");
+    return -1;
+  }
+
+  auto hand_lmk_output = std::dynamic_pointer_cast<HandLmkOutput>(node_output);
+  if (!hand_lmk_output) {
+    return -1;
+  }
+  if (node_output->output_tensors.empty()) {
+    msg_publisher_->publish(std::move(hand_lmk_output->ai_msg));
+    return -1;
+  }
+
   if (node_output->rt_stat->fps_updated) {
     RCLCPP_WARN(this->get_logger(),
             "input fps: %.2f, out fps: %.2f, "
@@ -195,15 +209,6 @@ int HandLmkDetNode::PostProcess(
             node_output->rt_stat->parse_time_ms);
   }
 
-  if (!msg_publisher_ && !feed_type_) {
-    RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"), "Invalid msg_publisher_");
-    return -1;
-  }
-
-  auto hand_lmk_output = std::dynamic_pointer_cast<HandLmkOutput>(node_output);
-  if (!hand_lmk_output) {
-    return -1;
-  }
 
   struct timespec time_now = {0, 0};
   clock_gettime(CLOCK_REALTIME, &time_now);
@@ -212,7 +217,11 @@ int HandLmkDetNode::PostProcess(
   auto parser = std::make_shared<HandLmkOutputParser>();
   auto lmk_val = std::make_shared<LandmarksResult>();
   if (hand_lmk_output->valid_rois != nullptr) {
-    parser->Parse(lmk_val, hand_lmk_output->output_tensors[0], hand_lmk_output->valid_rois);
+    if (parser->Parse(lmk_val, hand_lmk_output->output_tensors[0], hand_lmk_output->valid_rois) < 0) {
+      ai_msgs::msg::PerceptionTargets::UniquePtr& msg = hand_lmk_output->ai_msg;
+      msg_publisher_->publish(std::move(msg));
+      return -1;
+    }
   }
   
   if (!lmk_val) {
@@ -400,7 +409,8 @@ int HandLmkDetNode::PostProcess(
     msg_publisher_->publish(std::move(ai_msg));
   } else {
     RCLCPP_ERROR(rclcpp::get_logger("hand_lmk_det"),
-                 "Invalid ai msg, pub msg fail!");
+                 "Invalid ai msg!");
+    msg_publisher_->publish(std::move(hand_lmk_output->ai_msg));
     return -1;
   }
   return 0;
@@ -879,6 +889,12 @@ int HandLmkDetNode::NormalizeRoi(const hbDNNRoi *src,
   dst->right = dst->right > total_w ? total_w : dst->right;
   dst->bottom = dst->bottom > total_h ? total_h : dst->bottom;
 
+  // roi's left and top must be even, right and bottom must be odd
+  dst->left += (dst->left % 2 == 0 ? 0 : 1);
+  dst->top += (dst->top % 2 == 0 ? 0 : 1);
+  dst->right -= (dst->right % 2 == 1 ? 0 : 1);
+  dst->bottom -= (dst->bottom % 2 == 1 ? 0 : 1);
+ 
   return 0;
 }
 

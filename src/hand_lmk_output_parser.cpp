@@ -41,7 +41,7 @@ int32_t HandLmkOutputParser::Parse(
 
   if (!output_tensor) {
     RCLCPP_ERROR(rclcpp::get_logger("hand lmk parser"), "invalid out tensor");
-    rclcpp::shutdown();
+    return -1;
   }
   int batch = 1;  // rois->size();
   for (int i = 0; i < out_layers; i++) {
