@@ -179,14 +179,11 @@ class AiMsgManage {
                     std::shared_ptr<std::vector<hbDNNRoi>>& rois,
                     std::map<size_t, size_t>& valid_roi_idx,
                     ai_msgs::msg::PerceptionTargets::UniquePtr& ai_msg,
+                    std::function<int(const hbDNNRoi*, hbDNNRoi*)> norm_func,
                     int time_out_ms = 200);
 
  private:
   HandLmkFeedCache hand_lmk_feed_cache_;
-  // resizer model input size limit
-  // roi, width & hight must be in range [16, 256)
-  int32_t roi_size_max_ = 255;
-  int32_t roi_size_min_ = 16;
 };
 
 #endif  // AI_MSG_MANAGE_H_

@@ -95,6 +95,10 @@ class HandLmkDetNode : public DnnNode {
   int32_t model_output_count_ = 1;
   const int32_t kps_output_index_ = 0;
   float expand_scale_ = 1.25;
+  // resizer model input size limit
+  // roi, width & hight must be in range [16, 256)
+  int32_t roi_size_max_ = 255;
+  int32_t roi_size_min_ = 16;
 
   int is_sync_mode_ = 0;
 
