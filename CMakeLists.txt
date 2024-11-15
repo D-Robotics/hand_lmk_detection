@@ -39,7 +39,7 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(ai_msgs REQUIRED)
 find_package(dnn_node REQUIRED)
-
+find_package(OpenCV 4 REQUIRED)
 find_package(hbm_img_msgs REQUIRED)
 add_definitions(-DSHARED_MEM_ENABLED)
 
